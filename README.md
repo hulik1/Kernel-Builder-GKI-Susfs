@@ -64,4 +64,4 @@ In your forked repository, navigate to the **Actions** tab. Click **"I understan
 4. Click **Run workflow**.
 
 ### 5. Download Your Artifacts
-Once the CI pipeline completes successfully, scroll to the bottom of the workflow summary page. Under the **Artifacts** section, you will find your compiled kernel (either an AK3 zip or a repacked boot image) alongside the exact Manager APK required to control it. Download, flash via Kernel Flasher or custom recovery, and enjoy!
+Once the CI pipeline completes successfully, scroll to the bottom of the workflow summary page. Under the **Artifacts** section, you will find your compiled kernel (either an AK3 zip or a zip containing a repacked boot image plus an AK3 zip) alongside the exact Manager APK required to control it. Download, flash via Kernel Flasher or custom recovery, and enjoy!
