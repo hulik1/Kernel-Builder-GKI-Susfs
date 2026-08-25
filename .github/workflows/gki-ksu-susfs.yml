@@ -39,11 +39,11 @@ on:
         type: boolean
         default: true
         
-      enable_ksu:
-        description: "Integrate Root Manager only? (uncheck 'Integrate Root Manager and SUSFS')"
-        required: false
-        type: boolean
-        default: false
+#      enable_ksu:
+#        description: "Integrate Root Manager only? (uncheck 'Integrate Root Manager and SUSFS')"
+#        required: false
+#        type: boolean
+#        default: false
         
       custom_kconfigs:
         description: "Inject custom Kconfigs (tools/custom.fragment)?"
