@@ -1109,6 +1109,16 @@
       "kernel": "5.10.264",
       "date": "lts",
       "android_version": "android12"
+    },
+    {
+      "kernel": "5.10.265",
+      "date": "lts",
+      "android_version": "android12"
+    },
+    {
+      "kernel": "5.10.266",
+      "date": "lts",
+      "android_version": "android12"
     }
   ],
   "5.15": [
