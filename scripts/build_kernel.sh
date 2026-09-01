@@ -16,8 +16,9 @@ git -C common ls-files -m | xargs -r git -C common update-index --assume-unchang
 if [ -f "tools/bazel" ]; then
     echo ">>> Modern Kleaf/Bazel ecosystem detected..."
     
-    # Enforce standard sandboxing and inject MAKEFLAGS dynamically
+    # Enforce standard sandboxing, disable trimming, and inject MAKEFLAGS dynamically
     tools/bazel run --config=stamp \
+      --notrim \
       --action_env=SOURCE_DATE_EPOCH="$OFFICIAL_DATE" \
       --action_env=STABLE_BUILD_VERSION="-g$OFFICIAL_HASH" \
       --action_env=KLEAF_KERNEL_BUILD_VERSION="-g$OFFICIAL_HASH" \
@@ -36,6 +37,9 @@ else
     export KERNEL_DIR="common"
     export BUILD_CONFIG="common/build.config.gki.aarch64"
     export SOURCE_DATE_EPOCH="$OFFICIAL_DATE"
+    
+    # Disable trimming for the legacy Make ecosystem just in case
+    export TRIM_NONLISTED_KMI=0
     
     # Inject the fragment
     export EXTRA_DEFCONFIG_FRAGMENTS="custom_legacy.fragment"
