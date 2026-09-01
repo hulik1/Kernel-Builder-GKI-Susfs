@@ -7,15 +7,37 @@ WITH_CUSTOM=${WITH_CUSTOM:-false}
 # Define the source fragment relative to the script execution point
 FRAGMENT_SRC="$(pwd)/tools/custom.fragment"
 
-echo "=== Configuring Kconfigs & Fragments ==="
+echo "=== Configuring Kconfigs & ABI Neutralization ==="
 
 cd kernel_workspace
 
-echo ">>> Neutralizing ABI protected exports lists..."
-for f in common/android/abi_gki_protected_exports*; do
-  [ -f "$f" ] && > "$f"
+# ========================================================================
+# 1. NEUTRALIZE LEGACY ABI PROTECTED EXPORTS (5.10 through 6.6)
+# ========================================================================
+echo ">>> Neutralizing legacy ABI protected exports lists..."
+for f in common/android/abi_gki_protected_exports* android/abi_gki_protected_exports*; do
+    [ -f "$f" ] && > "$f" || true
 done
 
+# Enter the common kernel source tree
+cd common
+
+# ========================================================================
+# 2. NEUTRALIZE MODERN BAZEL TRIMMING & STRICT MODE (6.1, 6.6, 6.12+)
+# ========================================================================
+if [ -f "BUILD.bazel" ]; then
+    echo ">>> Modern Bazel detected: Disabling module trimming and strict ABI mode..."
+
+    # Match either "trim_nonlisted_kmi": True (6.6) or trim_nonlisted_kmi = True (6.12+)
+    sed -i -E 's/(["\x27]?trim_nonlisted_kmi["\x27]?[[:space:]]*[:=][[:space:]]*)True/\1False/g' BUILD.bazel
+
+    # Match either "kmi_symbol_list_strict_mode": True (6.1/6.6) or kmi_symbol_list_strict_mode = True (6.12+)
+    sed -i -E 's/(["\x27]?kmi_symbol_list_strict_mode["\x27]?[[:space:]]*[:=][[:space:]]*)True/\1False/g' BUILD.bazel
+fi
+
+# ========================================================================
+# 3. INTEGRATE CUSTOM KCONFIG FRAGMENT (Optional)
+# ========================================================================
 if [ "$WITH_CUSTOM" = "true" ]; then
     if [ ! -f "$FRAGMENT_SRC" ]; then
         echo "[-] Error: Fragment file not found at $FRAGMENT_SRC"
@@ -23,31 +45,42 @@ if [ "$WITH_CUSTOM" = "true" ]; then
     fi
 
     echo ">>> Integrating Kconfig Configurations from $FRAGMENT_SRC..."
-    cd common
-    
-    # Check if we are in a modern Bazel ecosystem
+
     if [ -f "BUILD.bazel" ]; then
-        echo ">>> Modern Bazel detected: Injecting via post_defconfig_fragments..."
-        
-        # Copy the static fragment into the Bazel package boundary
+        echo ">>> Exposing custom fragment to Bazel sandbox..."
         cp "$FRAGMENT_SRC" custom_fragment
-        
-        # Inject fragment targeting into the Bazel build rules
-        echo 'exports_files(["custom_fragment"])' >> BUILD.bazel
-        sed -i '/name = "kernel_aarch64",/a \    post_defconfig_fragments = ["custom_fragment"],' BUILD.bazel
-        
-        # Exclude the untracked fragment from standard git tracking status
-        echo "custom_fragment" >> .git/info/exclude
+
+        if grep -q '"kernel_aarch64": {' BUILD.bazel; then
+            # ----------------------------------------------------
+            # KERNEL 6.1 / 6.6 (Dictionary-style target_configs)
+            # ----------------------------------------------------
+            echo ">>> Detected Dictionary-style Bazel config (6.1 / 6.6). Injecting fragment..."
+            sed -i '/"kernel_aarch64": {/a \        "defconfig_fragments": ["custom_fragment"],' BUILD.bazel
+
+        elif grep -q 'name = "kernel_aarch64",' BUILD.bazel; then
+            # ----------------------------------------------------
+            # KERNEL 6.12+ (Rule macro style common_kernel)
+            # ----------------------------------------------------
+            echo ">>> Detected Rule macro Bazel config (6.12+). Injecting fragment..."
+            sed -i '/name = "kernel_aarch64",/a \    defconfig_fragments = ["custom_fragment"],' BUILD.bazel
+
+        else
+            echo "[-] Error: Could not locate 'kernel_aarch64' target in BUILD.bazel to inject fragment."
+            exit 1
+        fi
 
     else
-        echo ">>> Legacy Make detected (5.10 or older): Copying fragment..."
+        # ----------------------------------------------------
+        # KERNEL 5.10 / 5.15 (Legacy Make Ecosystem)
+        # ----------------------------------------------------
+        echo ">>> Legacy Make detected (5.10 / 5.15): Copying fragment..."
         cp "$FRAGMENT_SRC" arch/arm64/configs/custom_legacy.fragment
     fi
-    
-    cd ..
 else
     echo ">>> Skipping custom Kconfig configuration..."
 fi
 
-cd ..
-echo ">>> Kconfig configuration phase complete."
+# Return to root workspace directory
+cd ../..
+
+echo ">>> Kconfig & ABI configuration phase complete."
