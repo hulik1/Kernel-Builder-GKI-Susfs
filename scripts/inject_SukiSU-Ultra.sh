@@ -90,7 +90,7 @@ K_PATCH=$(grep "^PATCHLEVEL =" common/Makefile | tr -d ' ' | cut -d'=' -f2)
 
 if [ "$K_VER" = "6" ] && [ "$K_PATCH" -ge "12" ]; then
     LSM_HOOK_FILE="common/drivers/kernelsu/hook/lsm_hook.c"
-    
+
     if [ -f "$LSM_HOOK_FILE" ] && grep -q 'security_add_hooks(ksu_hooks, ARRAY_SIZE(ksu_hooks), "ksu");' "$LSM_HOOK_FILE"; then
         echo "  -> Kernel 6.12+ detected. Wrapping SukiSU-Ultra LSM hook in struct lsm_id..."
         sed -i 's/security_add_hooks(ksu_hooks, ARRAY_SIZE(ksu_hooks), "ksu");/static const struct lsm_id ksu_lsmid = { .name = "ksu", .id = 0 }; security_add_hooks(ksu_hooks, ARRAY_SIZE(ksu_hooks), \&ksu_lsmid);/g' "$LSM_HOOK_FILE"
@@ -100,6 +100,15 @@ if [ "$K_VER" = "6" ] && [ "$K_PATCH" -ge "12" ]; then
     fi
 else
     echo "  -> Kernel $K_VER.$K_PATCH detected. Legacy LSM string hook is perfectly valid."
+fi
+
+# ---------------------------------------------------------
+# SukiSU-Ultra Upstream Bug Fix: kernel_umount.c
+# ---------------------------------------------------------
+UMOUNT_FILE="common/drivers/kernelsu/feature/kernel_umount.c"
+if [ -f "$UMOUNT_FILE" ] && grep -q 'kernel_umount_feature_set' "$UMOUNT_FILE"; then
+    echo ">>> Patching undeclared kernel_umount_feature_set to NULL in SukiSU-Ultra..."
+    sed -i 's/kernel_umount_feature_set/NULL/g' "$UMOUNT_FILE"
 fi
 
 echo "  -> Target Tag: $CALCULATED_TAG"
