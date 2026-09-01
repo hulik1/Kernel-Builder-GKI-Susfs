@@ -9,28 +9,22 @@ echo "=== Configuring Kconfigs & ABI Neutralization for Kernel $BASE_VER ==="
 
 cd kernel_workspace
 
-# 1. NEUTRALIZE LEGACY ABI PROTECTED EXPORTS (5.10 through 6.6)
+# 1. NEUTRALIZE LEGACY ABI PROTECTED EXPORTS (modpost bypass for 5.10-6.6)
 for f in common/android/abi_gki_protected_exports* android/abi_gki_protected_exports*; do
     [ -f "$f" ] && > "$f" || true
 done
 
 cd common
 
-# 2. NEUTRALIZE MODERN BAZEL TRIMMING & STRICT MODE
+# 2. NEUTRALIZE STRICT SYMBOL LISTS (modpost bypass for older Bazel)
+# Note: module trimming is now handled globally via --notrim in build_kernel.sh
 case "$BASE_VER" in
-    5.10)
-        # Legacy Make ecosystem has no BUILD.bazel flags to patch
-        echo ">>> Legacy 5.10: Skipping Bazel ABI patches."
-        ;;
-    5.15|6.1)
-        echo ">>> Bazel 5.15/6.1: Disabling strict ABI mode..."
+    5.15|6.1|6.6)
+        echo ">>> Disabling strict ABI mode in BUILD.bazel for $BASE_VER..."
         sed -i -E 's/(["\x27]?kmi_symbol_list_strict_mode["\x27]?[[:space:]]*[:=][[:space:]]*)True/\1False/g' BUILD.bazel
         ;;
     *)
-        # Assumes 6.6 and 6.12+ (Android 15+)
-        echo ">>> Bazel 6.6+: Disabling strict ABI mode and module trimming..."
-        sed -i -E 's/(["\x27]?trim_nonlisted_kmi["\x27]?[[:space:]]*[:=][[:space:]]*)True/\1False/g' BUILD.bazel
-        sed -i -E 's/(["\x27]?kmi_symbol_list_strict_mode["\x27]?[[:space:]]*[:=][[:space:]]*)True/\1False/g' BUILD.bazel
+        echo ">>> Kleaf >= 6.12 handles ABI bypass natively via CLI. Skipping strict mode sed."
         ;;
 esac
 
@@ -43,14 +37,17 @@ if [ "$WITH_CUSTOM" = "true" ]; then
 
     case "$BASE_VER" in
         5.10)
+            echo ">>> Injecting Legacy 5.10 Kconfig Fragment..."
             cp "$FRAGMENT_SRC" arch/arm64/configs/custom_legacy.fragment
             ;;
         5.15|6.1)
+            echo ">>> Injecting Bazel 5.15/6.1 Kconfig Fragment..."
             cp "$FRAGMENT_SRC" custom_fragment
             sed -i '/name = "kernel_aarch64",/a \    post_defconfig_fragments = ["custom_fragment"],' BUILD.bazel
             ;;
         *) 
-            # Assumes 6.6 and 6.12+ (Android 15+)
+            # Assumes 6.6 and 6.12+
+            echo ">>> Injecting Bazel 6.6+ Kconfig Fragment..."
             cp "$FRAGMENT_SRC" custom_fragment
             sed -i '/"kernel_aarch64": {/a \        "defconfig_fragments": ["custom_fragment"],' BUILD.bazel
             ;;
