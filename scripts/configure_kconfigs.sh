@@ -17,7 +17,7 @@ done
 cd common
 
 # 2. NEUTRALIZE STRICT SYMBOL LISTS (modpost bypass for older Bazel)
-# Note: module trimming is now handled globally via --notrim in build_kernel.sh
+# Note: module trimming is handled globally via --notrim in build_kernel.sh
 case "$BASE_VER" in
     5.15|6.1|6.6)
         echo ">>> Disabling strict ABI mode in BUILD.bazel for $BASE_VER..."
@@ -41,12 +41,12 @@ if [ "$WITH_CUSTOM" = "true" ]; then
             cp "$FRAGMENT_SRC" arch/arm64/configs/custom_legacy.fragment
             ;;
         5.15|6.1)
-            echo ">>> Injecting Bazel 5.15/6.1 Kconfig Fragment..."
+            echo ">>> Injecting Bazel 5.15 to 6.1 Kconfig Fragment..."
             cp "$FRAGMENT_SRC" custom_fragment
             sed -i '/name = "kernel_aarch64",/a \    post_defconfig_fragments = ["custom_fragment"],' BUILD.bazel
             ;;
         *) 
-            # Assumes 6.6 and 6.12+
+            # 6.6+
             echo ">>> Injecting Bazel 6.6+ Kconfig Fragment..."
             cp "$FRAGMENT_SRC" custom_fragment
             sed -i '/"kernel_aarch64": {/a \        "defconfig_fragments": ["custom_fragment"],' BUILD.bazel
