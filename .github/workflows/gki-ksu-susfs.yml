@@ -282,6 +282,10 @@ jobs:
         env:
           WITH_CUSTOM: ${{ inputs.custom_kconfigs }}
         run: |
+          # Extract BASE_VER directly from the workflow input
+          BASE_VER=$(echo "${{ inputs.target_version }}" | cut -d. -f1,2)
+          echo "BASE_VER=$BASE_VER" >> $GITHUB_ENV
+          
           chmod +x scripts/configure_kconfigs.sh
           ./scripts/configure_kconfigs.sh
 
