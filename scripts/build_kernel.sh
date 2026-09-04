@@ -33,9 +33,12 @@ else
     mkdir -p out/dist
 
     # 1. Physically patch the hardcoded build configs so they cannot override our settings
-    echo ">>> Disabling strict mode and trimming in 5.10 build.config files..."
+    echo ">>> Disabling strict mode, trimming and check_defconfig in 5.10 build.config files..."
     sed -i 's/KMI_SYMBOL_LIST_STRICT_MODE=1/KMI_SYMBOL_LIST_STRICT_MODE=0/g' common/build.config.* 2>/dev/null || true
     sed -i 's/TRIM_NONLISTED_KMI=1/TRIM_NONLISTED_KMI=0/g' common/build.config.* 2>/dev/null || true
+    # WildKernels does the same for legacy 5.10: custom gki_defconfig entries
+    # such as BBRv3 must not be rejected by the canonical savedefconfig check.
+    sed -i 's/check_defconfig//g' common/build.config.gki 2>/dev/null || true
 
     # 2. Export standard environment variables for legacy build.sh
     export KERNEL_DIR="common"
