@@ -52,6 +52,40 @@ else
 
     if grep -qE '^config[[:space:]]+TCP_CONG_BBR3$' common/net/ipv4/Kconfig 2>/dev/null; then
         echo ">>> BBRv3 source detected. Forcing required 5.10 Kconfig options..."
+
+        # Android 12 / 5.10 legacy build.sh builds from gki_defconfig. Mirror the
+        # proven WildKernels approach and write mandatory BBRv3 settings there
+        # directly, before build/build.sh runs make gki_defconfig.
+        DEFCONFIG="common/arch/arm64/configs/gki_defconfig"
+        if [ ! -f "$DEFCONFIG" ]; then
+            echo "[-] ERROR: $DEFCONFIG not found; cannot enable BBRv3." >&2
+            exit 1
+        fi
+
+        set_gki_config() {
+            local key="$1"
+            local value="$2"
+
+            if grep -q "^${key}=" "$DEFCONFIG"; then
+                sed -i "s|^${key}=.*|${key}=${value}|" "$DEFCONFIG"
+            elif grep -q "^# ${key} is not set$" "$DEFCONFIG"; then
+                sed -i "s|^# ${key} is not set$|${key}=${value}|" "$DEFCONFIG"
+            else
+                echo "${key}=${value}" >> "$DEFCONFIG"
+            fi
+        }
+
+        set_gki_config CONFIG_TCP_CONG_ADVANCED y
+        set_gki_config CONFIG_TCP_CONG_BBR y
+        set_gki_config CONFIG_TCP_CONG_BBR3 y
+        set_gki_config CONFIG_NET_SCHED y
+        set_gki_config CONFIG_NET_SCH_FQ y
+
+        echo ">>> BBRv3 written directly to $DEFCONFIG"
+        grep -E '^CONFIG_(TCP_CONG_ADVANCED|TCP_CONG_BBR|TCP_CONG_BBR3|NET_SCHED|NET_SCH_FQ)=' "$DEFCONFIG" || true
+
+        # Keep the legacy fragment in sync for custom-config reporting and for
+        # trees where the optional post-defconfig hook is available.
         touch "$LEGACY_FRAGMENT"
 
         # Remove stale/duplicate values before appending the authoritative settings.
