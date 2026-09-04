@@ -66,11 +66,39 @@ CONFIG_NET_SCH_FQ=y
 EOF
     fi
 
+    # Android 12 / 5.10 legacy build.sh does not consume EXTRA_DEFCONFIG_FRAGMENTS.
+    # build.config.gki.aarch64 does, however, source GKI_DEFCONFIG_FRAGMENT after
+    # build.config.gki. Use that supported hook to extend POST_DEFCONFIG_CMDS and
+    # merge our fragment into the actual OUT_DIR/.config after gki_defconfig.
     if [ -s "$LEGACY_FRAGMENT" ]; then
-        export EXTRA_DEFCONFIG_FRAGMENTS="custom_legacy.fragment"
-        echo ">>> Legacy defconfig fragment enabled: custom_legacy.fragment"
+        LEGACY_KCONFIG_HOOK="$(pwd)/common/build.config.gki.builder_fragment"
+
+        cat > "$LEGACY_KCONFIG_HOOK" <<'EOF'
+apply_builder_kconfig_fragment() {
+    local fragment="${ROOT_DIR}/${KERNEL_DIR}/arch/arm64/configs/custom_legacy.fragment"
+
+    if [ ! -s "$fragment" ]; then
+        return 0
+    fi
+
+    echo ">>> Applying legacy builder Kconfig fragment to ${OUT_DIR}/.config..."
+
+    KCONFIG_CONFIG="${OUT_DIR}/.config" \
+        "${ROOT_DIR}/${KERNEL_DIR}/scripts/kconfig/merge_config.sh" \
+        -m -r "${OUT_DIR}/.config" "$fragment"
+
+    # Resolve Kconfig dependencies after the merge. The hard validation below
+    # will fail the build if a requested mandatory option still cannot survive.
+    (cd "${OUT_DIR}" && make ${CC_LD_ARG} O="${OUT_DIR}" olddefconfig)
+}
+
+POST_DEFCONFIG_CMDS="${POST_DEFCONFIG_CMDS:+${POST_DEFCONFIG_CMDS} && }apply_builder_kconfig_fragment"
+EOF
+
+        export GKI_DEFCONFIG_FRAGMENT="$LEGACY_KCONFIG_HOOK"
+        echo ">>> Legacy defconfig hook enabled: $GKI_DEFCONFIG_FRAGMENT"
     else
-        unset EXTRA_DEFCONFIG_FRAGMENTS || true
+        unset GKI_DEFCONFIG_FRAGMENT || true
         echo ">>> No legacy defconfig fragment requested."
     fi
 
