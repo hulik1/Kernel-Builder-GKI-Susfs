@@ -95,10 +95,16 @@ if [ "$WITH_CUSTOM" = "true" ]; then
     echo "=============================================="
 
     FRAGMENT_FILE="../tools/custom.fragment"
+    BBR3_REQUIRED=false
+    BBR3_VALIDATION_FAILED=0
     
     if [ ! -f "$FRAGMENT_FILE" ]; then
         echo "[-] Notice: tools/custom.fragment not found. Skipping validation."
     else
+        if [ "$BASE_VER" = "5.10" ] && grep -q '^CONFIG_TCP_CONG_BBR3=y$' "$FRAGMENT_FILE"; then
+            BBR3_REQUIRED=true
+        fi
+
         # Locate the definitive compiled configuration source
         CONFIG_SRC=""
         if [ -f "out/dist/config.gz" ]; then
@@ -111,6 +117,9 @@ if [ "$WITH_CUSTOM" = "true" ]; then
 
         if [ -z "$CONFIG_SRC" ]; then
             echo "[!] WARN: Could not locate compiled kernel configuration target."
+            if [ "$BBR3_REQUIRED" = "true" ]; then
+                BBR3_VALIDATION_FAILED=1
+            fi
         else
             echo ">>> Extracting definitions from: $CONFIG_SRC"
             echo "----------------------------------------------"
@@ -137,6 +146,11 @@ if [ "$WITH_CUSTOM" = "true" ]; then
                     else
                         printf "  [ DROP ] %-40s = MISSING/OVERRIDDEN\n" "$CFG"
                     fi
+
+                    # BBRv3 is the 5.10 backport we explicitly require in the final Image.
+                    if [ "$BBR3_REQUIRED" = "true" ] && [ "$CFG" = "CONFIG_TCP_CONG_BBR3" ] && [ "$VAL" != "y" ]; then
+                        BBR3_VALIDATION_FAILED=1
+                    fi
                 done
             fi
         fi
@@ -144,6 +158,11 @@ if [ "$WITH_CUSTOM" = "true" ]; then
 
     echo "=============================================="
     echo "::endgroup::"
+
+    if [ "$BBR3_VALIDATION_FAILED" -ne 0 ]; then
+        echo "[-] ERROR: BBRv3 was requested but CONFIG_TCP_CONG_BBR3=y is not present in the compiled 5.10 kernel config." >&2
+        exit 1
+    fi
 fi
 
 cd ..
