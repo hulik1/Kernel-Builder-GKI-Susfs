@@ -31,6 +31,14 @@ CONFIG_NET_SCHED=y
 CONFIG_NET_SCH_FQ=y
 CONFIG_NET_SCH_FQ_CODEL=y
 
+# Android 12 / kernel 5.10 gives these legacy congestion controls a module
+# default once TCP_CONG_ADVANCED is enabled. GKI then rejects modules.order
+# because they are not present in android/gki_aarch64_modules. Keep them off;
+# BBR/BBRv3 remain built into the kernel above.
+# CONFIG_TCP_CONG_BIC is not set
+# CONFIG_TCP_CONG_WESTWOOD is not set
+# CONFIG_TCP_CONG_HTCP is not set
+
 # --- VIRTUAL NETWORKS ---
 CONFIG_DUMMY=y
 
