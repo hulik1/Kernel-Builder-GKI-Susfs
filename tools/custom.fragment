@@ -21,8 +21,12 @@ CONFIG_NETFILTER_XT_MATCH_POLICY=y
 #CONFIG_IP6_NF_IPTABLES=y
 #CONFIG_NETFILTER_XT_MATCH_HL=y
 
-# --- TCP BBR & QUEUING (SPEED & LATENCY) ---
+# --- TCP BBR / BBRv3 & QUEUING (SPEED & LATENCY) ---
+# BBR and the BBRv3 backport live under the TCP_CONG_ADVANCED Kconfig menu.
+# The BBRv3 patch adds CONFIG_TCP_CONG_BBR3 and builds tcp_bbr3.o from it.
+CONFIG_TCP_CONG_ADVANCED=y
 CONFIG_TCP_CONG_BBR=y
+CONFIG_TCP_CONG_BBR3=y
 CONFIG_NET_SCHED=y
 CONFIG_NET_SCH_FQ=y
 CONFIG_NET_SCH_FQ_CODEL=y
@@ -34,4 +38,3 @@ CONFIG_DUMMY=y
 # NoMount is a kernel-based file injection and path redirection framework.
 # For integration instructions, refer to: https://github.com/maxsteeel/nomount/tree/master/kernel
 CONFIG_NOMOUNT=y
-
