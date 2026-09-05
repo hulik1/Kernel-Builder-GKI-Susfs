@@ -33,5 +33,5 @@ CONFIG_NETFILTER_XT_MATCH_POLICY=y
 # --- NOMOUNT VFS ---
 # NoMount is a kernel-based file injection and path redirection framework.
 # For integration instructions, refer to: https://github.com/maxsteeel/nomount/tree/master/kernel
-#CONFIG_NOMOUNT=y
+CONFIG_NOMOUNT=y
 
