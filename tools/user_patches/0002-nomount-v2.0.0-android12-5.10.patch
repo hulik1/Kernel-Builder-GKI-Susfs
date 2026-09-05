@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+Subject: [PATCH] fs: integrate NoMount v2.0.0 on Android 12 5.10
+
+NoMount v2.x is built from fs/nomount/ as a subdirectory.  Unlike the old
+1.x integration this patch does not add VFS nomount_handle_* hooks and does
+not build fs/nomount.o directly.
+
+The source directory must exist at fs/nomount/ before this patch is applied.
+The builder already injects tools/user_source/fs/nomount/ first.
+
+---
+ fs/Kconfig  | 2 ++
+ fs/Makefile | 2 ++
+ 2 files changed, 4 insertions(+)
+
+diff --git a/fs/Kconfig b/fs/Kconfig
+--- a/fs/Kconfig
++++ b/fs/Kconfig
+@@ -351,4 +351,6 @@ source "fs/unicode/Kconfig"
+ config IO_WQ
+ 	bool
+ 
++source "fs/nomount/Kconfig"
++
+ endmenu
+diff --git a/fs/Makefile b/fs/Makefile
+--- a/fs/Makefile
++++ b/fs/Makefile
+@@ -24,6 +24,8 @@ else
+ obj-y +=	no-block.o
+ endif
+ 
++obj-$(CONFIG_NOMOUNT) += nomount/
++
+ obj-$(CONFIG_PROC_FS) += proc_namespace.o
+ 
+ obj-y				+= notify/
+-- 
+2.43.0
