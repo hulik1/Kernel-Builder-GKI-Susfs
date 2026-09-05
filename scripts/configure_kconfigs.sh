@@ -28,16 +28,16 @@ case "$BASE_VER" in
         ;;
 esac
 
-# 3. INTEGRATE CURRENT NOMOUNT MASTER
+# 3. INTEGRATE CURRENT NOMOUNT DEV
 # The NoMount branch intentionally does not carry a vendored fs/nomount copy.
-# Pull the current upstream master at build time and integrate it directly.
+# Pull the current upstream dev branch at build time and integrate it directly.
 if [ "$BASE_VER" = "5.10" ]; then
-    echo ">>> Fetching current NoMount master..."
+    echo ">>> Fetching current NoMount dev..."
 
     NOMOUNT_TMP="$(mktemp -d)"
     trap 'rm -rf "$NOMOUNT_TMP"' EXIT
 
-    git clone --depth=1 --branch master \
+    git clone --depth=1 --branch dev \
         https://github.com/maxsteeel/nomount.git "$NOMOUNT_TMP/nomount"
 
     NOMOUNT_COMMIT=$(git -C "$NOMOUNT_TMP/nomount" rev-parse HEAD)
@@ -71,7 +71,7 @@ if [ "$BASE_VER" = "5.10" ]; then
     test -s fs/nomount/Kconfig
     test -s fs/nomount/Makefile
 
-    echo ">>> Current NoMount master integrated into fs/nomount."
+    echo ">>> Current NoMount dev integrated into fs/nomount."
 else
     echo ">>> NoMount auto-integration is enabled only for kernel 5.10 on this branch."
 fi
