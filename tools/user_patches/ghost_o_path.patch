@@ -7,9 +7,7 @@ fragile even though the required insertion point is unchanged.
 
 --- a/fs/namei.c
 +++ b/fs/namei.c
-@@ -3901,4 +3901,16 @@ static int do_o_path(struct nameidata *nd, unsigned flags, struct file *file)
- {
- 	struct path path;
+@@ -3904,3 +3904,10 @@
  	int error = path_lookupat(nd, flags, &path);
 +	extern bool ghost_hidden_path(const struct path *gp);
 +
@@ -19,3 +17,4 @@ fragile even though the required insertion point is unchanged.
 +			path_put(&path);
 +			return -ENOENT;
 +		}
+ 		audit_inode(nd->name, path.dentry, 0);
