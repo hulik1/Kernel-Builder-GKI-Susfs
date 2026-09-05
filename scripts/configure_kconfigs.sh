@@ -28,7 +28,55 @@ case "$BASE_VER" in
         ;;
 esac
 
-# 3. INTEGRATE CUSTOM KCONFIG FRAGMENT
+# 3. INTEGRATE CURRENT NOMOUNT MASTER
+# The NoMount branch intentionally does not carry a vendored fs/nomount copy.
+# Pull the current upstream master at build time and integrate it directly.
+if [ "$BASE_VER" = "5.10" ]; then
+    echo ">>> Fetching current NoMount master..."
+
+    NOMOUNT_TMP="$(mktemp -d)"
+    trap 'rm -rf "$NOMOUNT_TMP"' EXIT
+
+    git clone --depth=1 --branch master \
+        https://github.com/maxsteeel/nomount.git "$NOMOUNT_TMP/nomount"
+
+    NOMOUNT_COMMIT=$(git -C "$NOMOUNT_TMP/nomount" rev-parse HEAD)
+    echo ">>> NoMount upstream commit: $NOMOUNT_COMMIT"
+    echo "NOMOUNT_COMMIT=$NOMOUNT_COMMIT" >> "$GITHUB_ENV"
+
+    rm -rf fs/nomount
+    mkdir -p fs/nomount
+    cp -f "$NOMOUNT_TMP/nomount/kernel/src/"* fs/nomount/
+
+    if ! grep -qF 'obj-$(CONFIG_NOMOUNT) += nomount/' fs/Makefile; then
+        printf '\nobj-$(CONFIG_NOMOUNT) += nomount/\n' >> fs/Makefile
+    fi
+
+    if ! grep -qF 'source "fs/nomount/Kconfig"' fs/Kconfig; then
+        awk '
+            /^endmenu/ { last_match = NR }
+            { lines[NR] = $0 }
+            END {
+                for (i = 1; i <= NR; i++) {
+                    if (i == last_match) print "source \"fs/nomount/Kconfig\""
+                    print lines[i]
+                }
+            }
+        ' fs/Kconfig > fs/Kconfig.tmp
+        mv fs/Kconfig.tmp fs/Kconfig
+    fi
+
+    test -s fs/nomount/nomount.c
+    test -s fs/nomount/nomount.h
+    test -s fs/nomount/Kconfig
+    test -s fs/nomount/Makefile
+
+    echo ">>> Current NoMount master integrated into fs/nomount."
+else
+    echo ">>> NoMount auto-integration is enabled only for kernel 5.10 on this branch."
+fi
+
+# 4. INTEGRATE CUSTOM KCONFIG FRAGMENT
 if [ "$WITH_CUSTOM" = "true" ]; then
     if [ ! -f "$FRAGMENT_SRC" ]; then
         echo "[-] Error: Fragment not found at $FRAGMENT_SRC"
@@ -45,7 +93,7 @@ if [ "$WITH_CUSTOM" = "true" ]; then
             cp "$FRAGMENT_SRC" custom_fragment
             sed -i '/name = "kernel_aarch64",/a \    post_defconfig_fragments = ["custom_fragment"],' BUILD.bazel
             ;;
-        *) 
+        *)
             # 6.6+
             echo ">>> Injecting Bazel 6.6+ Kconfig Fragment..."
             cp "$FRAGMENT_SRC" custom_fragment
