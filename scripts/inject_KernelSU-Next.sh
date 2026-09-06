@@ -21,7 +21,7 @@ if [ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]; then
     cd "${MANAGER_DIR}"
 
     # CAPTURE THIS IMMEDIATELY BEFORE ANY MERGING!
-    UPSTREAM_HASH=$(git log -n 1 --format="%H" -- . ":!website/" ":!docs/" ":!*.md" ":!.github/")
+    UPSTREAM_HASH=$(git log -n 1 --format="%H" -i --grep="ci skip" --grep="skip ci" --invert-grep -- . ":!website/" ":!docs/" ":!*.md" ":!.github/")
     CALCULATED_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
     echo "  -> Target Tag: $CALCULATED_TAG"
 
