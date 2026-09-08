@@ -112,6 +112,9 @@ if [ -f "$UMOUNT_FILE" ] && grep -q 'kernel_umount_feature_set' "$UMOUNT_FILE"; 
     sed -i 's/kernel_umount_feature_set/NULL/g' "$UMOUNT_FILE"
 fi
 
+# Purge the deprecated hook from the kernel source to prevent linker death
+sed -i '/ksu_install_su_fd/d' common/fs/exec.c
+
 echo "  -> Target Tag: $CALCULATED_TAG"
 echo "  -> Target Hash: $UPSTREAM_HASH"
 echo "  -> Target Count: $CALCULATED_COUNT"
