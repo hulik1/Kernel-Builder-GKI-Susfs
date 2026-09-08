@@ -189,22 +189,22 @@ fi
 # 5.7 Purge Deprecated Hooks (Variant-Specific Linker Crash Fix)
 echo ">>> Checking for deprecated hooks injected by SuSFS patches..."
 
+# 1. SukiSU-Ultra / ReSukiSU across-the-board cleanup for ksu_install_su_fd
 if [ "$ROOT_MANAGER" = "SukiSU-Ultra" ] || [ "$ROOT_MANAGER" = "ReSukiSU" ]; then
     echo "  -> $ROOT_MANAGER detected. Purging ksu_install_su_fd from exec.c..."
     sed -i '/ksu_install_su_fd/d' common/fs/exec.c
     echo "  -> Hook purged."
+fi
 
-elif [ "$ROOT_MANAGER" = "KernelSU-Next" ]; then
-    if [ "$BASE_VER" = "6.1" ]; then
-        echo "  -> KernelSU-Next (6.1) detected. Purging deprecated sucompat hook from exec.c..."
-        sed -i '/ksu_handle_post_execveat_sucompat/d' common/fs/exec.c
-        echo "  -> Hook purged."
-    else
-        echo "  -> KernelSU-Next ($BASE_VER) detected. sucompat hook is valid for this version. Skipping."
-    fi
-
-elif [ "$ROOT_MANAGER" = "KernelSU" ]; then
-    echo "  -> Standard KernelSU detected. Hooks are fully supported natively. Skipping."
+# 2. Universal 6.1 cleanup for deprecated multi-line sucompat hook (All Variants)
+if [ "$BASE_VER" = "6.1" ]; then
+    echo "  -> 6.1 build detected. Purging multi-line sucompat hook from exec.c..."
+    
+    # Range deletion: Deletes from the function name down to the closing 'retval);' 
+    # Safely destroys both the 3-line extern declaration and the 2-line function call
+    sed -i '/ksu_handle_post_execveat_sucompat/,/retval);/d' common/fs/exec.c
+    
+    echo "  -> Multi-line hook safely purged."
 fi
 
 # 6. Final Validation
