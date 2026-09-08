@@ -138,7 +138,7 @@ jobs:
              
           # Export to global runner environment immediately
           echo "BASE_VER=$BASE_VER" >> $GITHUB_ENV
-
+          
           # --- QUERY UNIFIED JSON DATABASE ---
           if [ -f "$DB_FILE" ]; then
               echo ">>> Querying $DB_FILE for branch match..."
@@ -183,6 +183,7 @@ jobs:
 
           # Export to environment for subsequent sync steps
           echo "MANIFEST_BRANCH=${MANIFEST_BRANCH}" >> $GITHUB_ENV
+          echo "ROOT_MANAGER=${{ inputs.root_manager }}" >> $GITHUB_ENV
           echo "MANIFEST_URL=https://android.googlesource.com/kernel/manifest" >> $GITHUB_ENV
 
 

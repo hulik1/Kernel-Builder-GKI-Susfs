@@ -97,8 +97,4 @@ fi
 # Step back out to kernel_workspace
 cd .. 
 
-# Purge deprecated sucompat hook from the kernel source to prevent linker death
-sed -i '/ksu_handle_post_execveat_sucompat/d' common/fs/exec.c
-
-
 echo ">>> KernelSU-Next integration complete."

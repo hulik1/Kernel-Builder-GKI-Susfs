@@ -186,6 +186,27 @@ if [ "$K_VER" = "6" ] && [ "$K_PATCH" -ge "12" ]; then
   fi
 fi
 
+# 5.7 Purge Deprecated Hooks (Variant-Specific Linker Crash Fix)
+echo ">>> Checking for deprecated hooks injected by SuSFS patches..."
+
+if [ "$ROOT_MANAGER" = "SukiSU-Ultra" ] || [ "$ROOT_MANAGER" = "ReSukiSU" ]; then
+    echo "  -> $ROOT_MANAGER detected. Purging ksu_install_su_fd from exec.c..."
+    sed -i '/ksu_install_su_fd/d' common/fs/exec.c
+    echo "  -> Hook purged."
+
+elif [ "$ROOT_MANAGER" = "KernelSU-Next" ]; then
+    if [ "$BASE_VER" = "6.1" ]; then
+        echo "  -> KernelSU-Next (6.1) detected. Purging deprecated sucompat hook from exec.c..."
+        sed -i '/ksu_handle_post_execveat_sucompat/d' common/fs/exec.c
+        echo "  -> Hook purged."
+    else
+        echo "  -> KernelSU-Next ($BASE_VER) detected. sucompat hook is valid for this version. Skipping."
+    fi
+
+elif [ "$ROOT_MANAGER" = "KernelSU" ]; then
+    echo "  -> Standard KernelSU detected. Hooks are fully supported natively. Skipping."
+fi
+
 # 6. Final Validation
 echo ">>> Checking for unresolved patch rejections..."
 mapfile -t REMAINING_REJ < <(find common -type f -name '*.rej')
