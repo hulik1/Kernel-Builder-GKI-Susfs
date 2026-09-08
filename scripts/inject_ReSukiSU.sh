@@ -59,6 +59,9 @@ else
     cd ..
 fi
 
+# ReSukiSU Upstream Bug Fix: Purge deprecated hook to prevent linker crash
+sed -i '/ksu_install_su_fd/d' common/fs/exec.c
+
 echo "  -> Target Tag: $CALCULATED_TAG"
 echo "  -> Target Hash: $UPSTREAM_HASH"
 echo "  -> Target Count: $CALCULATED_COUNT"

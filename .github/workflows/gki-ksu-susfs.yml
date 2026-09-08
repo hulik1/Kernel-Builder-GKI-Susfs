@@ -135,6 +135,9 @@ jobs:
           BASE_VER=$(echo "$TARGET" | cut -d. -f1,2)
           DB_FILE="tools/master_kernel_db.json"
           MANIFEST_BRANCH=""
+             
+          # Export to global runner environment immediately
+          echo "BASE_VER=$BASE_VER" >> $GITHUB_ENV
 
           # --- QUERY UNIFIED JSON DATABASE ---
           if [ -f "$DB_FILE" ]; then
@@ -298,15 +301,9 @@ jobs:
         env:
           WITH_CUSTOM: ${{ inputs.custom_kconfigs }}
         run: |
-          # Export for the CURRENT step so the script can see it immediately
-          export BASE_VER=$(echo "${{ inputs.target_version }}" | cut -d. -f1,2)
-          
-          # Write to GITHUB_ENV for any FUTURE steps that might need it
-          echo "BASE_VER=$BASE_VER" >> $GITHUB_ENV
-          
           chmod +x scripts/configure_kconfigs.sh
           ./scripts/configure_kconfigs.sh
-
+          
       - name: Inject User Source Files
         if: ${{ inputs.custom_patches }}
         run: |
