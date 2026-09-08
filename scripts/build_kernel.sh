@@ -13,9 +13,19 @@ git -C common ls-files -m | xargs -r git -C common update-index --assume-unchang
 
 if [ "$BASE_VER" != "5.10" ] && [ -f "tools/bazel" ]; then
     echo ">>> Modern Kleaf/Bazel ecosystem detected for $BASE_VER..."
-
+    
+    # 5.15 Kleaf doesn't support --notrim. We must use dynamic flag injection.
+    TRIM_FLAGS=""
+    if [ "$BASE_VER" = "5.15" ]; then
+        echo "  -> 5.15 detected. Omitting --notrim and injecting legacy env vars..."
+        TRIM_FLAGS="--action_env=TRIM_NONLISTED_KMI=0 --action_env=KMI_SYMBOL_LIST_STRICT_MODE=0"
+    else
+        TRIM_FLAGS="--notrim"
+    fi
+    
+    # Enforce standard sandboxing, disable trimming dynamically, and inject MAKEFLAGS
     tools/bazel run --config=stamp \
-      --notrim \
+      $TRIM_FLAGS \
       --action_env=SOURCE_DATE_EPOCH="$OFFICIAL_DATE" \
       --action_env=STABLE_BUILD_VERSION="-g$OFFICIAL_HASH" \
       --action_env=KLEAF_KERNEL_BUILD_VERSION="-g$OFFICIAL_HASH" \
