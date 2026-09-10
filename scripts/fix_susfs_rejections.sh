@@ -198,18 +198,18 @@ fi
 
 # 2. Cleanup for deprecated sucompat hook (5.10 & 6.1)
 if [ "$BASE_VER" = "5.10" ] || [ "$BASE_VER" = "6.1" ]; then
-    echo "  -> Kernel $BASE_VER detected. Satisfying linker with dummy sucompat function..."
+    echo "  -> Kernel $BASE_VER detected. Satisfying linker with weak dummy sucompat function..."
     
     # Check if dummy function has already been appended
     if ! grep -q "/* Dummy function to satisfy linker for deprecated SuSFS hook */" common/fs/exec.c; then
         cat << 'EOF' >> common/fs/exec.c
 
 /* Dummy function to satisfy linker for deprecated SuSFS hook */
-int ksu_handle_post_execveat_sucompat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags, int *retval) {
+__attribute__((weak)) int ksu_handle_post_execveat_sucompat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags, int *retval) {
     return 0;
 }
 EOF
-        echo "  -> Dummy function successfully injected."
+        echo "  -> Weak dummy function successfully injected."
     else
         echo "  -> Dummy function already present in fs/exec.c. Skipping."
     fi
@@ -227,6 +227,19 @@ if [ "$BASE_VER" = "5.10" ]; then
   else
     echo "  -> statfs declaration already positioned correctly or not present. Skipping."
   fi
+fi
+
+# 5.9 Universal fix for missing security.h in fs/susfs.c (Kernel 5.10)
+echo ">>> Checking for missing security.h in fs/susfs.c..."
+
+if [ "$BASE_VER" = "5.10" ]; then
+    if [ -f "common/fs/susfs.c" ] && grep -q "security_sb_statfs" common/fs/susfs.c && ! grep -q "<linux/security.h>" common/fs/susfs.c; then
+        echo "  -> Kernel 5.10 detected. Injecting <linux/security.h> into fs/susfs.c..."
+        sed -i '1i #include <linux/security.h>' common/fs/susfs.c
+        echo "  -> Header successfully injected!"
+    else
+        echo "  -> fs/susfs.c already includes security.h or function call not present. Skipping."
+    fi
 fi
 
 # 6. Final Validation
