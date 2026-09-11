@@ -13,7 +13,7 @@ Unlike massive kernel distribution repositories that compile hundreds of generic
 
 The result? You get one single, tailor-made kernel artifact and its exact matching manager APK, perfectly synced with the upstream ecosystem.
 
-### ✨ Key Points of Difference
+### ✨ Advantages
 * **No Waiting for Updates:** You don't have to wait for a maintainer to trigger a batch build. If Google drops a new GKI update, or KernelSU merges a new commit, you can build it yourself immediately.
 * **Bleeding Edge by Default:** The `dynamic` build channel pulls the latest upstream commits for the Linux kernel and your chosen root manager every single time you run it. 
 * **Precision Output:** Instead of sifting through hundreds of zip files to find your device's specific combination, the CI builds exactly what you ask for and packages it cleanly.
@@ -22,9 +22,11 @@ The result? You get one single, tailor-made kernel artifact and its exact matchi
 
 ## ⚙️ Features
 * **Multiple Root Managers:** Native integration support for `KernelSU`, `KernelSU-Next`, `SukiSU-Ultra`, and `ReSukiSU`.
-* **Smart Stock Isolation:** Select `Stock` to guarantee a pristine Google source tree. Combine `Stock` with custom Kconfigs to build an "Enhanced Stock" kernel—perfect for APatch or Magisk users who need specific kernel features (like OverlayFS or Wireguard) baked into the core without conflicting root source code pollution.
+* **Smart Stock Isolation:** Select `Stock` to guarantee a pristine Google source tree. Combine `Stock` with custom Kconfigs to build an "Enhanced Stock" kernel—perfect for APatch or Magisk users who need specific kernel features baked into the core without conflicting root source code pollution.
 * **SuSFS Integration:** Automated patching and macro injection for SuSFS to enable advanced path hiding, kstat spoofing, and mount masking.
-* **Customization Engine:** Master switch to inject custom Kconfig fragments, `.patch` files, and raw kernel source modifications on demand.
+* **NoMount VFS:** Native integration of maxsteeel's NoMount for advanced kernel-level path redirection. The pipeline dynamically hooks the VFS tree and outputs a ready-to-flash KernelSU metamodule alongside the kernel.
+* **Performance Networking:** Built-in fragment support for TCP BBR congestion control and FQ_CODEL scheduling to minimize bufferbloat and optimize latency.
+* **Unified Customization Engine:** A single master switch to intelligently inject custom Kconfig fragments, version-aware `.patch` files, and raw kernel source modifications on demand across versions 5.10 to 6.12.
 * **Flexible Packaging:** Outputs a standard `AnyKernel3` (AK3) flashable zip by default. If you provide a full OTA URL, it will extract, patch, and repack a raw `boot.img` for direct fastboot flashing.
 
 ---
@@ -38,9 +40,11 @@ Click the **Fork** button at the top right of this page to create your own copy 
 
 ### 2. Add Your Custom Files (Optional)
 If you plan to use the Customization Engine, place your files in the respective directories before running the workflow:
-* **Custom Kconfigs:** Place or un-hash preconfigured flags in `tools/custom.fragment` (e.g., `CONFIG_WIREGUARD=y`).
-* **User Patches:** Drop any `.patch` files into `tools/user_patches/`. *(Note: Blocked when `Stock` is selected)*
-* **User Source:** Drop raw driver files or source overrides into `tools/user_source/`. *(Note: Blocked when `Stock` is selected)*
+* **Custom Kconfigs:** Place or un-hash preconfigured flags in `tools/custom.fragment` (e.g., `CONFIG_NOMOUNT=y`, `CONFIG_TCP_CONG_BBR=y`).
+* **User Patches:** Drop any `.patch` files into `tools/user_patches/`. The CI will intelligently apply them based on the kernel version prefix (e.g., `6.1-fix.patch` will only apply to 6.1 builds). *(Note: Blocked when `Stock` is selected)*
+* **User Source:** Drop raw driver files or source overrides into `tools/user_source/` (e.g., placing NoMount source in `tools/user_source/fs/nomount/`). *(Note: Blocked when `Stock` is selected)*
+
+The `NoMount` branch also carries the BBRv3 backport for Android 12 / kernel 5.10. Enable **Inject NoMount and custom Kconfigs (BBRv3 on 5.10)?** to apply its patch and configuration. The version-aware patch filter skips BBRv3 on other kernel versions; 5.10 builds check BBRv3 and FQ in the final configuration before publishing the Image.
 
 ### 3. Enable GitHub Actions
 In your forked repository, navigate to the **Actions** tab. Click **"I understand my workflows, go ahead and enable them"**.
@@ -54,14 +58,13 @@ In your forked repository, navigate to the **Actions** tab. Click **"I understan
 | :--- | :--- |
 | **Build Channel** | Choose `dynamic` (latest upstream commits) or `stable` (fallback to verified forks if dynamic fails). |
 | **Build Name** | A custom name for your output artifact (e.g., `Pixel_10_Pro_Testing`). |
-| **Kernel Version** | The exact GKI target version you wish to build (e.g., `6.6.118`). |
+| **Kernel Version** | The exact GKI target version you wish to build (e.g., `6.12.11`). |
 | **Root Environment** | Select your preferred root manager from the dropdown list (`KernelSU`, `KernelSU-Next`, `SukiSU-Ultra`, `ReSukiSU`, or `Stock`). |
 | **Integrate Root Manager and SUSFS?** | Check to inject Kernel root and SUSFS. *(Ignored if `Stock` is selected)* |
-| **Integrate Root Manager only?** | Check to inject the selected root manager without adding SuSFS. *(Ignored if `Stock` is selected)* |
-| **Inject Custom Kconfigs, patches, and source files?** | Check to apply `tools/custom.fragment`, `tools/user_patches/*.patch`, and `tools/user_source/*`. **If `Stock` is selected, only `custom.fragment` Kconfigs will be applied to prevent source pollution.** |
+| **Inject NoMount and custom Kconfigs (BBRv3 on 5.10)?** | The Master Switch. Check to dynamically wire NoMount source, inject custom Kconfigs (BBR), apply version-aware patches, and download the NoMount metamodule. **If `Stock` is selected, only `custom.fragment` Kconfigs will be applied.** |
 | **OTA URL (Optional)** | Leave blank to output an `AnyKernel3` zip. Provide a direct link to a full OTA zip to output a pre-patched `boot.img`. |
 
 4. Click **Run workflow**.
 
 ### 5. Download Your Artifacts
-Once the CI pipeline completes successfully, scroll to the bottom of the workflow summary page. Under the **Artifacts** section, you will find your compiled kernel (either an AK3 zip or a zip containing a repacked boot image plus an AK3 zip) alongside the exact Manager APK required to control it. Download, flash via Kernel Flasher or custom recovery, and enjoy!
+Once the CI pipeline completes successfully, scroll to the bottom of the workflow summary page. Under the **Artifacts** section, you will find your compiled kernel (either an AK3 zip or a zip containing a repacked boot image plus an AK3 zip), your NoMount metamodule (if enabled), and the exact Manager APK required to control it. Download, flash via Kernel Flasher or custom recovery, and enjoy!

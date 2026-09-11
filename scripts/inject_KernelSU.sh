@@ -13,7 +13,7 @@ if [ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]; then
     cd ..
     
     cd "${MANAGER_DIR}"
-    UPSTREAM_HASH=$(git log -n 1 --format="%H" -i --grep="ci skip" --grep="skip ci" --invert-grep -- . ":!website/" ":!docs/" ":!*.md" ":!.github/")
+    UPSTREAM_HASH=$(git log -n 1 --format="%H" -i --grep="ci skip" --grep="skip ci" --invert-grep -- . ":!website/" ":!docs/" ":!scripts/" ":!*.md" ":!.github/")
     CALCULATED_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
     CALCULATED_COUNT=$(git rev-list --count "${UPSTREAM_HASH}")
     UPSTREAM_BRANCH="main"
@@ -40,6 +40,13 @@ ccflags-y += -DCONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=1
 ccflags-y += -DCONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=1
 ccflags-y += -DCONFIG_KSU_SUSFS_OPEN_REDIRECT=1
 ccflags-y += -DCONFIG_KSU_SUSFS_SUS_MAP=1
+# --- Print SuSFS Version ---
+ifeq ($(strip $(CONFIG_KSU_SUSFS)),y)
+ifeq ($(shell test -e $(srctree)/fs/susfs.c; echo $$?),0)
+$(eval SUSFS_VERSION=$(shell cat $(srctree)/include/linux/susfs.h | grep -E '^#define SUSFS_VERSION' | cut -d' ' -f3 | sed 's/"//g'))
+$(info -- SuSFS version: $(SUSFS_VERSION))
+endif
+endif
 EOF
         rm 10_enable_susfs_for_ksu.patch
     else
@@ -72,7 +79,7 @@ else
     
     # FIX 4: Calculate Hash, Count, and Tag starting strictly from the pristine base commit
     set +o pipefail
-    UPSTREAM_HASH=$(git log --first-parent "${RAW_BASE}" --format="%H" -n 1 -- . ":!website/" ":!docs/" ":!*.md" ":!.github/")
+    UPSTREAM_HASH=$(git log --first-parent "${RAW_BASE}" -i --grep="ci skip" --grep="skip ci" --invert-grep -- . ":!website/" ":!docs/" ":!*.md" ":!.github/" ":!scripts/")
     set -o pipefail
     
     CALCULATED_COUNT=$(git rev-list --count "${UPSTREAM_HASH}" 2>/dev/null || echo "11950")

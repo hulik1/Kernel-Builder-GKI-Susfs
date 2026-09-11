@@ -21,7 +21,7 @@ if [ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]; then
     cd "${MANAGER_DIR}"
 
     # CAPTURE THIS IMMEDIATELY BEFORE ANY MERGING!
-    UPSTREAM_HASH=$(git log -n 1 --format="%H" -i --grep="ci skip" --grep="skip ci" --invert-grep -- . ":!website/" ":!docs/" ":!*.md" ":!.github/")
+    UPSTREAM_HASH=$(git log -n 1 --format="%H" -i --grep="ci skip" --grep="skip ci" --invert-grep -- . ":!website/" ":!docs/" ":!*.md" ":!.github/" ":!scripts/")
     CALCULATED_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
     echo "  -> Target Tag: $CALCULATED_TAG"
 
@@ -42,6 +42,16 @@ if [ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]; then
         fi
         
         git commit -m "Merge susfs features from pershoot"
+    fi
+    
+    # Hotpatch strict Kbuild config check to prevent 'make clean' from crashing
+    if [ -f "kernel/Kbuild" ]; then
+        if grep -q "KernelSU requires either CONFIG_KPROBES" kernel/Kbuild; then
+            echo ">>> [HOTFIX] Bypassing strict Kbuild dependency check for the clean phase..."
+            sed -i '/KernelSU requires either CONFIG_KPROBES/d' kernel/Kbuild
+        else
+            echo ">>> [NOTICE] Strict Kbuild check not found! Upstream likely fixed this. You can remove this hotpatch."
+        fi
     fi
 
     # Lock in variables for the Kbuild Gatekeeper
@@ -85,7 +95,7 @@ else
 
         # FIX 4: Walk backward down the pristine mainline branch
         set +o pipefail
-        UPSTREAM_HASH=$(git log --first-parent "${RAW_BASE}" --format="%H" -n 1 -- . ":!website/" ":!docs/" ":!*.md" ":!.github/")
+        UPSTREAM_HASH=$(git log -n 1 --first-parent "${RAW_BASE}" --format="%H" -i --grep="ci skip" --grep="skip ci" --invert-grep -- . ":!website/" ":!docs/" ":!*.md" ":!.github/" ":!scripts/")
         set -o pipefail
     fi
     
