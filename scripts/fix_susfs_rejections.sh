@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# scripts/fix_susfs_rejections.sh
 set -euo pipefail
 
 echo ">>> Starting SUSFS patch fixup routine..."
@@ -76,6 +77,35 @@ extern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;\
     rm "common/fs/namespace.c.rej"
   else
     echo "  [-] WARNING: namespace.c fix failed to inject! The anchor line may have changed." >&2
+  fi
+fi
+
+# 3.5 Fix fs/super.c
+if [ -f "common/fs/super.c.rej" ]; then
+  echo ">>> Found super.c.rej. Applying manual fix..."
+  
+  # Inject the susfs header block BEFORE <uapi/linux/mount.h>
+  sed -i '/#include <uapi\/linux\/mount.h>/i\
+#ifdef CONFIG_KSU_SUSFS\
+#include <linux/susfs_def.h>\
+#endif \/\/ #ifdef CONFIG_KSU_SUSFS\
+' common/fs/super.c
+
+  # Inject the extern definitions AFTER "internal.h"
+  sed -i '/#include "internal.h"/a\
+\
+#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\
+extern bool susfs_is_current_ksu_domain(void);\
+extern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;\
+#endif \/\/ #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT\
+' common/fs/super.c
+
+  # Sanity Check: Did the injection actually write the externs to the file?
+  if grep -q 'susfs_is_sdcard_android_data_not_decrypted' common/fs/super.c; then
+    echo "  -> super.c fix verified!"
+    rm "common/fs/super.c.rej"
+  else
+    echo "  [-] WARNING: super.c fix failed to inject! The anchor line may have changed." >&2
   fi
 fi
 

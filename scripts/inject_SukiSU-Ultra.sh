@@ -103,15 +103,6 @@ else
     echo "  -> Kernel $K_VER.$K_PATCH detected. Legacy LSM string hook is perfectly valid."
 fi
 
-# ---------------------------------------------------------
-# SukiSU-Ultra Upstream Bug Fix: kernel_umount.c
-# ---------------------------------------------------------
-UMOUNT_FILE="common/drivers/kernelsu/feature/kernel_umount.c"
-if [ -f "$UMOUNT_FILE" ] && grep -q 'kernel_umount_feature_set' "$UMOUNT_FILE"; then
-    echo ">>> Patching undeclared kernel_umount_feature_set to NULL in SukiSU-Ultra..."
-    sed -i 's/kernel_umount_feature_set/NULL/g' "$UMOUNT_FILE"
-fi
-
 echo "  -> Target Tag: $CALCULATED_TAG"
 echo "  -> Target Hash: $UPSTREAM_HASH"
 echo "  -> Target Count: $CALCULATED_COUNT"

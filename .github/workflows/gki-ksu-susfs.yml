@@ -46,11 +46,11 @@ on:
 #        default: false
         
       custom_kconfigs:
-        description: "Inject nomount VFS?"
+        description: "Inject nomount VFS & Network Optimizations (BBR, CAKE, FastOpen, ECN)"
         required: false
         type: boolean
         default: false
-        
+
 #        custom_patches:
 #        description: "Apply User Patches and Inject Source Files?"
 #        required: false

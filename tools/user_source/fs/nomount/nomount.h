@@ -1,3 +1,5 @@
+<<<<<<< HEAD
+=======
 #ifndef _LINUX_NOMOUNT_H
 #define _LINUX_NOMOUNT_H
 
@@ -720,3 +722,4 @@ static inline const struct dentry_operations *nm_get_orig_dops(struct nm_iop *io
 }
 
 #endif /* _LINUX_NOMOUNT_H */
+>>>>>>> main
