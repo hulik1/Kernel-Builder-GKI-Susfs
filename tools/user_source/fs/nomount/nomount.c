@@ -1633,4 +1633,5 @@ MODULE_IMPORT_NS(ANDROID_GKI_VFS_EXPORT_ONLY);
 #endif
 
 fs_initcall(nomount_init);
+
 module_exit(nomount_exit);
