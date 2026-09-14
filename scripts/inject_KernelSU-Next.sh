@@ -44,16 +44,6 @@ if [ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]; then
         git commit -m "Merge susfs features from pershoot"
     fi
     
-    # Hotpatch strict Kbuild config check to prevent 'make clean' from crashing
-    if [ -f "kernel/Kbuild" ]; then
-        if grep -q "KernelSU requires either CONFIG_KPROBES" kernel/Kbuild; then
-            echo ">>> [HOTFIX] Bypassing strict Kbuild dependency check for the clean phase..."
-            sed -i '/KernelSU requires either CONFIG_KPROBES/d' kernel/Kbuild
-        else
-            echo ">>> [NOTICE] Strict Kbuild check not found! Upstream likely fixed this. You can remove this hotpatch."
-        fi
-    fi
-
     # Lock in variables for the Kbuild Gatekeeper
     UPSTREAM_BRANCH="dev"
     CALCULATED_COUNT=$(git rev-list --count "${UPSTREAM_HASH}")
@@ -106,5 +96,20 @@ fi
 
 # Step back out to kernel_workspace
 cd .. 
+
+# ---------------------------------------------------------
+# KernelSU-Next Kbuild Hotfix (Universal)
+# ---------------------------------------------------------
+# Hotpatch strict Kbuild config check to prevent 'make clean' from crashing.
+# Placed here universally to protect both dynamic and stable pipeline channels.
+KBUILD_FILE="${MANAGER_DIR}/kernel/Kbuild"
+if [ -f "$KBUILD_FILE" ]; then
+    if grep -q "KernelSU requires either CONFIG_KPROBES" "$KBUILD_FILE"; then
+        echo ">>> [HOTFIX] Bypassing strict Kbuild dependency check for the clean phase..."
+        sed -i '/KernelSU requires either CONFIG_KPROBES/d' "$KBUILD_FILE"
+    else
+        echo ">>> [NOTICE] Strict Kbuild check not found! Upstream likely fixed this. You can remove this hotpatch."
+    fi
+fi
 
 echo ">>> KernelSU-Next integration complete."

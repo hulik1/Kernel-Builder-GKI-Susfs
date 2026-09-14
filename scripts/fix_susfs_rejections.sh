@@ -219,29 +219,25 @@ fi
 # 5.7 Universal Ghost Hook Sanitation
 echo ">>> Checking for deprecated hooks injected by SuSFS patches..."
 
-# 1. SukiSU-Ultra / ReSukiSU across-the-board cleanup for ksu_install_su_fd
-# (This single-line sed is proven safe and works flawlessly on 6.6/6.12)
 if [ "$ROOT_MANAGER" = "SukiSU-Ultra" ] || [ "$ROOT_MANAGER" = "ReSukiSU" ]; then
-    echo "  -> $ROOT_MANAGER detected. Purging ksu_install_su_fd from exec.c..."
-    sed -i '/ksu_install_su_fd/d' common/fs/exec.c
-fi
-
-# 2. Cleanup for deprecated sucompat hook (5.10 & 6.1)
-if [ "$BASE_VER" = "5.10" ] || [ "$BASE_VER" = "6.1" ]; then
-    echo "  -> Kernel $BASE_VER detected. Satisfying linker with weak dummy sucompat function..."
+    echo "  -> $ROOT_MANAGER detected. Applying universal sucompat safeguards..."
     
-    # Check if dummy function has already been appended
-    if ! grep -q "/* Dummy function to satisfy linker for deprecated SuSFS hook */" common/fs/exec.c; then
+    # 1. Purge dead ksu_install_su_fd hooks if present
+    sed -i '/ksu_install_su_fd/d' common/fs/exec.c || true
+    
+    # 2. Universally inject the weak stub for ksu_handle_post_execveat_sucompat 
+    # across ALL kernel versions to prevent ld.lld linker crashes.
+    if ! grep -q "/* Universal weak stub for SuSFS sucompat hook */" common/fs/exec.c; then
         cat << 'EOF' >> common/fs/exec.c
 
-/* Dummy function to satisfy linker for deprecated SuSFS hook */
+/* Universal weak stub for SuSFS sucompat hook */
 __attribute__((weak)) int ksu_handle_post_execveat_sucompat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags, int *retval) {
     return 0;
 }
 EOF
-        echo "  -> Weak dummy function successfully injected."
+        echo "  -> Universal weak sucompat stub successfully injected into fs/exec.c."
     else
-        echo "  -> Dummy function already present in fs/exec.c. Skipping."
+        echo "  -> Weak sucompat stub already present. Skipping."
     fi
 fi
 
