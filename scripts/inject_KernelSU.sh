@@ -79,7 +79,7 @@ else
     
     # FIX 4: Calculate Hash, Count, and Tag starting strictly from the pristine base commit
     set +o pipefail
-    UPSTREAM_HASH=$(git log --first-parent "${RAW_BASE}" -i --grep="ci skip" --grep="skip ci" --invert-grep -- . ":!website/" ":!docs/" ":!*.md" ":!.github/" ":!scripts/")
+    UPSTREAM_HASH=$(git log -n 1 --format="%H" --first-parent "${RAW_BASE}" -i --grep="ci skip" --grep="skip ci" --invert-grep -- . ":!website/" ":!docs/" ":!*.md" ":!.github/" ":!scripts/")
     set -o pipefail
     
     CALCULATED_COUNT=$(git rev-list --count "${UPSTREAM_HASH}" 2>/dev/null || echo "11950")

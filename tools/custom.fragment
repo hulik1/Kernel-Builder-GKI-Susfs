@@ -6,44 +6,37 @@
 
 # --- CORE WIREGUARD ---
 CONFIG_WIREGUARD=y
-CONFIG_NET_UDP_TUNNEL=y
 CONFIG_NETFILTER_XT_MATCH_HASHLIMIT=y
 CONFIG_NETFILTER_XT_MATCH_LENGTH=y
 CONFIG_NETFILTER_XT_MATCH_MARK=y
 CONFIG_NETFILTER_XT_MATCH_POLICY=y
 
 # --- NETFILTER & IPTABLES UNLOCKERS ---
-#CONFIG_NETFILTER_ADVANCED=y
-#CONFIG_IP_NF_MANGLE=y
-#CONFIG_IP6_NF_MANGLE=y
-#CONFIG_NETFILTER_XTABLES=y
-#CONFIG_IP_NF_IPTABLES=y
-#CONFIG_IP6_NF_IPTABLES=y
-#CONFIG_NETFILTER_XT_MATCH_HL=y
+CONFIG_NETFILTER_ADVANCED=y
+CONFIG_IP_NF_MANGLE=y
+CONFIG_IP6_NF_MANGLE=y
+CONFIG_NETFILTER_XTABLES=y
+CONFIG_IP_NF_IPTABLES=y
+CONFIG_IP6_NF_IPTABLES=y
+CONFIG_NETFILTER_XT_MATCH_HL=y
 
-# --- TCP BBR / BBRv3 & QUEUING (SPEED & LATENCY) ---
-# BBR and the BBRv3 backport live under the TCP_CONG_ADVANCED Kconfig menu.
-# The BBRv3 patch adds CONFIG_TCP_CONG_BBR3 and builds tcp_bbr3.o from it.
+# --- LATENCY & THROUGHPUT OPTIMIZATIONS ---
 CONFIG_TCP_CONG_ADVANCED=y
 CONFIG_TCP_CONG_BBR=y
+# The Android 12 / 5.10 backport adds this option alongside BBR.
 CONFIG_TCP_CONG_BBR3=y
-CONFIG_NET_SCHED=y
-CONFIG_NET_SCH_FQ=y
-CONFIG_NET_SCH_FQ_CODEL=y
 
-# Android 12 / kernel 5.10 gives these legacy congestion controls a module
-# default once TCP_CONG_ADVANCED is enabled. GKI then rejects modules.order
-# because they are not present in android/gki_aarch64_modules. Keep them off;
-# BBR/BBRv3 remain built into the kernel above.
+# Keep legacy congestion controls out of the GKI modules list.
 # CONFIG_TCP_CONG_BIC is not set
 # CONFIG_TCP_CONG_WESTWOOD is not set
 # CONFIG_TCP_CONG_HTCP is not set
 
-# --- VIRTUAL NETWORKS ---
-#CONFIG_DUMMY=y
+# --- QUEUING & SCHEDULERS ---
+CONFIG_NET_SCHED=y
+CONFIG_NET_SCH_FQ=y
+CONFIG_NET_SCH_FQ_CODEL=y
+CONFIG_NET_SCH_CAKE=y
 
-# --- NOMOUNT VFS ---
-# NoMount is a kernel-based file injection and path redirection framework.
-# For integration instructions, refer to: https://github.com/maxsteeel/nomount/tree/master/kernel
+# --- VIRTUAL NETWORKS & NOMOUNT ---
+CONFIG_DUMMY=y
 CONFIG_NOMOUNT=y
-

@@ -44,7 +44,7 @@ If you plan to use the Customization Engine, place your files in the respective 
 * **User Patches:** Drop any `.patch` files into `tools/user_patches/`. The CI will intelligently apply them based on the kernel version prefix (e.g., `6.1-fix.patch` will only apply to 6.1 builds). *(Note: Blocked when `Stock` is selected)*
 * **User Source:** Drop raw driver files or source overrides into `tools/user_source/` (e.g., placing NoMount source in `tools/user_source/fs/nomount/`). *(Note: Blocked when `Stock` is selected)*
 
-The `NoMount` branch also carries the BBRv3 backport for Android 12 / kernel 5.10. Enable **Inject NoMount and custom Kconfigs (BBRv3 on 5.10)?** to apply its patch and configuration. The version-aware patch filter skips BBRv3 on other kernel versions; 5.10 builds check BBRv3 and FQ in the final configuration before publishing the Image.
+The `NoMount` branch also carries the BBRv3 backport for Android 12 / kernel 5.10. Enable **Inject NoMount & Network Optimizations (BBR3 on 5.10, CAKE, FastOpen, ECN)** to apply its patch and configuration. The version-aware patch filter skips BBRv3 on other kernel versions; 5.10 builds check BBRv3 and FQ in the final configuration before publishing the Image.
 
 ### 3. Enable GitHub Actions
 In your forked repository, navigate to the **Actions** tab. Click **"I understand my workflows, go ahead and enable them"**.
@@ -61,7 +61,7 @@ In your forked repository, navigate to the **Actions** tab. Click **"I understan
 | **Kernel Version** | The exact GKI target version you wish to build (e.g., `6.12.11`). |
 | **Root Environment** | Select your preferred root manager from the dropdown list (`KernelSU`, `KernelSU-Next`, `SukiSU-Ultra`, `ReSukiSU`, or `Stock`). |
 | **Integrate Root Manager and SUSFS?** | Check to inject Kernel root and SUSFS. *(Ignored if `Stock` is selected)* |
-| **Inject NoMount and custom Kconfigs (BBRv3 on 5.10)?** | The Master Switch. Check to dynamically wire NoMount source, inject custom Kconfigs (BBR), apply version-aware patches, and download the NoMount metamodule. **If `Stock` is selected, only `custom.fragment` Kconfigs will be applied.** |
+| **Inject NoMount & Network Optimizations (BBR3 on 5.10, CAKE, FastOpen, ECN)** | The Master Switch. Check to dynamically wire NoMount source, inject custom Kconfigs (BBR), apply version-aware patches, and download the NoMount metamodule. **If `Stock` is selected, only `custom.fragment` Kconfigs will be applied.** |
 | **OTA URL (Optional)** | Leave blank to output an `AnyKernel3` zip. Provide a direct link to a full OTA zip to output a pre-patched `boot.img`. |
 
 4. Click **Run workflow**.

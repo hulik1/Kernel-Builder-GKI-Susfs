@@ -46,11 +46,11 @@ on:
 #        default: false
         
       custom_kconfigs:
-        description: "Inject NoMount and custom Kconfigs (BBRv3 on 5.10)?"
+        description: "Inject NoMount & Network Optimizations (BBR3 on 5.10, CAKE, FastOpen, ECN)"
         required: false
         type: boolean
         default: false
-        
+
 #        custom_patches:
 #        description: "Apply User Patches and Inject Source Files?"
 #        required: false
