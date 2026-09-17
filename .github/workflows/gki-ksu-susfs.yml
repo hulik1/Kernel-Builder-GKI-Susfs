@@ -213,7 +213,7 @@ jobs:
           else
             echo ">>> Routing to Safe Fallback Forks (Stable/Test)..."
             echo "USE_DYNAMIC_TRANSPLANT=false" >> $GITHUB_ENV
-            echo "SUSFS_REPO_URL=https://gitlab.com/shoey63/susfs4ksu.git" >> $GITHUB_ENV
+            echo "SUSFS_REPO_URL=https://gitlab.com/simonpunk/susfs4ksu" >> $GITHUB_ENV
             echo "KSU_VARIANT_REPO_URL=https://github.com/shoey63/${{ inputs.root_manager }}.git" >> $GITHUB_ENV
             echo "KSU_VARIANT_REF=${{ inputs.build_channel }}" >> $GITHUB_ENV
           fi
