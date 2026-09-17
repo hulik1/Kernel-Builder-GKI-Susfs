@@ -205,7 +205,7 @@ jobs:
                # Any future/unsupported variants will fall back here for now
                echo ">>> Routing ${{ inputs.root_manager }} to shoey63 Canary fork..."
                echo "USE_DYNAMIC_TRANSPLANT=false" >> $GITHUB_ENV
-               echo "SUSFS_REPO_URL=https://gitlab.com/shoey63/susfs4ksu.git" >> $GITHUB_ENV
+               echo "SUSFS_REPO_URL=https://gitlab.com/simonpunk/susfs4ksu" >> $GITHUB_ENV
                echo "KSU_VARIANT_REPO_URL=https://github.com/shoey63/${{ inputs.root_manager }}.git" >> $GITHUB_ENV
                echo "KSU_VARIANT_REF=stable" >> $GITHUB_ENV
              fi
