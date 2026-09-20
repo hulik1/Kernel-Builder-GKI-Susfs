@@ -13,28 +13,17 @@ if [ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]; then
     # Prevent setup.sh from performing a redundant clone
     ln -sfn "../${MANAGER_DIR}" "common/${MANAGER_DIR}"
     
-    # Pin the official KernelSU-Next revision that corresponds to version 33282.
-    KSUN_UPSTREAM_COMMIT="e9f2356fc0df928c9ba9b9dab92c0076c02fa289"
-    KSUN_EXPECTED_VERSION=33282
-
-    echo ">>> Executing native setup.sh to initialize pinned revision..."
+    echo ">>> Executing native setup.sh to initialize branch..."
     cd common
-    bash "${MANAGER_DIR}/kernel/setup.sh" "${KSUN_UPSTREAM_COMMIT}"
+    bash "${MANAGER_DIR}/kernel/setup.sh" dev
     cd ..
-
+    
     cd "${MANAGER_DIR}"
 
-    # Capture this exact revision before the SUSFS squash adds a local commit.
-    UPSTREAM_HASH=$(git rev-parse HEAD)
-    CALCULATED_COUNT=$(git rev-list --count "${UPSTREAM_HASH}")
-    if [[ "${UPSTREAM_HASH}" != "${KSUN_UPSTREAM_COMMIT}" ]] || \
-       (( 30000 + CALCULATED_COUNT != KSUN_EXPECTED_VERSION )); then
-        echo "[-] KernelSU-Next checkout/version does not match the pinned 33282 revision." >&2
-        exit 1
-    fi
-    CALCULATED_TAG=$(git describe --tags --abbrev=0 "${UPSTREAM_HASH}" 2>/dev/null || echo "v0.0.0")
-    echo "  -> Pinned KernelSU-Next version: ${KSUN_EXPECTED_VERSION} (${UPSTREAM_HASH})"
-    echo "  -> Target Tag: ${CALCULATED_TAG}"
+    # CAPTURE THIS IMMEDIATELY BEFORE ANY MERGING!
+    UPSTREAM_HASH=$(git log -n 1 --format="%H" -i --grep="ci skip" --grep="skip ci" --invert-grep -- . ":!website" ":!docs" ":!*.md" ":!.github" ":!scripts" ":!userspace")
+    CALCULATED_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+    echo "  -> Target Tag: $CALCULATED_TAG"
 
     if [ "${INTEGRATE_SUSFS}" == "true" ]; then
         echo ">>> 2. Fetching Pershoot's live laboratory..."
