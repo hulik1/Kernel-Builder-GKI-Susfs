@@ -85,7 +85,7 @@ else
 
         # FIX 4: Walk backward down the pristine mainline branch
         set +o pipefail
-        UPSTREAM_HASH=$(git log -n 1 --first-parent "${RAW_BASE}" --format="%H" -i --grep="ci skip" --grep="skip ci" --invert-grep -- . ":!website" ":!docs" ":!*.md" ":!.github" ":!scripts" ":!userspace")
+        UPSTREAM_HASH=$(git log -n 1 --first-parent "${RAW_BASE}" --format="%H" -i --grep="ci skip" --grep="skip ci" --invert-grep -- manager/ kernel/)
         set -o pipefail
     fi
     
