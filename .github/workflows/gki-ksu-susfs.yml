@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       build_channel:
-        description: 'Build Channel (switch to stable in case of errors/instability)'
+        description: 'Build Channel'
         required: false
         type: choice
         options:
-          - dynamic
           - stable
+          - dynamic
           - test
 
       build_name:
