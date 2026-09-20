@@ -13,9 +13,9 @@ if [ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]; then
     # Prevent setup.sh from performing a redundant clone
     ln -sfn "../${MANAGER_DIR}" "common/${MANAGER_DIR}"
     
-    # Pin the official KernelSU-Next revision that corresponds to version 33278.
-    KSUN_UPSTREAM_COMMIT="ac5de08b7702ba57aff64499a64f70e87d339252"
-    KSUN_EXPECTED_VERSION=33278
+    # Pin the official KernelSU-Next revision that corresponds to version 33282.
+    KSUN_UPSTREAM_COMMIT="e9f2356fc0df928c9ba9b9dab92c0076c02fa289"
+    KSUN_EXPECTED_VERSION=33282
 
     echo ">>> Executing native setup.sh to initialize pinned revision..."
     cd common
@@ -29,7 +29,7 @@ if [ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]; then
     CALCULATED_COUNT=$(git rev-list --count "${UPSTREAM_HASH}")
     if [[ "${UPSTREAM_HASH}" != "${KSUN_UPSTREAM_COMMIT}" ]] || \
        (( 30000 + CALCULATED_COUNT != KSUN_EXPECTED_VERSION )); then
-        echo "[-] KernelSU-Next checkout/version does not match the pinned 33278 revision." >&2
+        echo "[-] KernelSU-Next checkout/version does not match the pinned 33282 revision." >&2
         exit 1
     fi
     CALCULATED_TAG=$(git describe --tags --abbrev=0 "${UPSTREAM_HASH}" 2>/dev/null || echo "v0.0.0")
