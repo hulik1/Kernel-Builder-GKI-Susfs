@@ -144,6 +144,8 @@ static const struct file_operations nm_file_fops;
 static const struct inode_operations nm_file_iops;
 static const struct file_operations nm_dir_fops;
 static const struct inode_operations nm_dir_iops;
+static const struct dentry_operations nm_dops;
+static const struct dentry_operations nm_owned_dops;
 
 /*** forward declarations ***/
 static struct dentry *nomount_hijacked_lookup(struct inode *dir, struct dentry *dentry, unsigned int flags);
@@ -234,6 +236,8 @@ enum {
     NM_CMD_CLEAR_UIDS,
     NM_CMD_GET_LIST,
     NM_CMD_GET_UIDS,
+    NM_CMD_BLOCK_ISOLATED_UIDS,
+    NM_CMD_GET_ISOLATED_STATE,
 };
 
 struct nm_payload {
