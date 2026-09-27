@@ -32,7 +32,7 @@
 #define nm_err(fmt, ...)  printk(KERN_ERR "NoMount: [ERROR] " fmt, ##__VA_ARGS__)
 
 static struct nm_uid_array __rcu *nomount_uids = NULL;
-static DEFINE_HASHTABLE(nomount_rules_ht, 12);
+static DEFINE_HASHTABLE(nomount_rules_ht, 6);
 static DEFINE_MUTEX(nomount_mutex);
 static LIST_HEAD(nomount_sb_list);
 
@@ -144,11 +144,13 @@ static const struct file_operations nm_file_fops;
 static const struct inode_operations nm_file_iops;
 static const struct file_operations nm_dir_fops;
 static const struct inode_operations nm_dir_iops;
+static const struct dentry_operations nm_dops;
+static const struct dentry_operations nm_owned_dops;
 
 /*** forward declarations ***/
 static struct dentry *nomount_hijacked_lookup(struct inode *dir, struct dentry *dentry, unsigned int flags);
 static int nomount_hijacked_iterate_dir(struct file *file, struct dir_context *ctx);
-static void nomount_hijacked_destroy_inode(struct inode *inode);
+static void nomount_hijacked_evict_inode(struct inode *inode);
 static void nomount_hijack_dentry_ops(struct inode *dir, struct dentry *dentry, bool injected);
 static void nm_free_rule(struct nomount_rule *rule);
 
@@ -234,6 +236,8 @@ enum {
     NM_CMD_CLEAR_UIDS,
     NM_CMD_GET_LIST,
     NM_CMD_GET_UIDS,
+    NM_CMD_BLOCK_ISOLATED_UIDS,
+    NM_CMD_GET_ISOLATED_STATE,
 };
 
 struct nm_payload {
@@ -347,7 +351,7 @@ static inline struct nm_fop *nm_get_nm_fop(const struct file_operations *fop) {
 }
 
 static inline struct nm_sop *nm_get_nm_sop(const struct super_operations *sop) {
-    if (likely(sop) && sop->destroy_inode == nomount_hijacked_destroy_inode)
+    if (likely(sop) && sop->evict_inode == nomount_hijacked_evict_inode)
         return container_of(sop, struct nm_sop, fake_sop);
     return NULL;
 }
