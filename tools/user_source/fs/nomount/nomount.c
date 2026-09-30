@@ -385,26 +385,16 @@ static struct dentry *nomount_hijacked_lookup(struct inode *dir, struct dentry *
         return res;
 
 do_real_lookup:
-	if (likely(nm_iop && nm_iop->orig_iop && nm_iop->orig_iop->lookup)) {
-		res = nm_iop->orig_iop->lookup(dir, dentry, flags);
-		struct dentry *target = res ? res : dentry;
-		if (likely(!IS_ERR(target))) {
-			if (unlikely(READ_ONCE(target->d_op) != &nm_iop->fake_dops || !(READ_ONCE(target->d_flags) & DCACHE_OP_REVALIDATE)))
-				nomount_hijack_dentry_ops(dir, target, false);
-			if (target->d_inode && S_ISDIR(target->d_inode->i_mode)) {
-				u32 child_hash = full_name_hash((const void *)(unsigned long)NOMOUNT_MAGIC_SIG, target->d_name.name, target->d_name.len);
-				if (READ_ONCE(dir_node->bloom_mask) & (1ULL << (child_hash & 63))) {
-					struct nm_rule_info r_info;
-					if (nomount_get_rule_info(dir_node, target->d_name.name, target->d_name.len, child_hash, &r_info, false)) {
-						if (r_info.this_dir)
-							nomount_hijack_dir_ops(r_info.this_dir, target->d_inode);
-					}
-				}
-			}
-		}
-		return res;
-	}
-	return ERR_PTR(-EOPNOTSUPP);
+    if (likely(nm_iop && nm_iop->orig_iop && nm_iop->orig_iop->lookup)) {
+        res = nm_iop->orig_iop->lookup(dir, dentry, flags);
+        struct dentry *target = res ? res : dentry;
+        if (likely(!IS_ERR(target))) {
+            if (unlikely(READ_ONCE(target->d_op) != &nm_iop->fake_dops || !(READ_ONCE(target->d_flags) & DCACHE_OP_REVALIDATE)))
+                nomount_hijack_dentry_ops(dir, target, false);
+        }
+        return res;
+    }
+    return ERR_PTR(-EOPNOTSUPP);
 }
 
 static int nomount_hijacked_iterate_dir(struct file *file, struct dir_context *ctx)
@@ -1196,8 +1186,10 @@ static struct nomount_dir_node *__nomount_delete_child_locked(struct nomount_rul
         if (old_count == 1 && !parent) {
             smp_mb();
             if (!rcu_access_pointer(dir_node->iop) && !rcu_access_pointer(dir_node->fop) &&
-                cmpxchg(&dir_node->v_inode, NULL, (struct inode *)-1L) == NULL)
+                cmpxchg(&dir_node->v_inode, NULL, (struct inode *)-1L) == NULL) {
+                if (dir_node->pinned_dentry) dput(dir_node->pinned_dentry);
                 call_rcu(&dir_node->rcu, nm_dir_rcu_free);
+            }
         }
         rcu_read_unlock();
         if (old_arr) kfree_rcu(old_arr, rcu);
@@ -1281,6 +1273,7 @@ static int nomount_generate_virtual_topology(struct nomount_rule *target_rule)
                 if (!old_node) kfree(dir_node);
             } else {
                 if (!is_virtual) {
+                    if (!old_node) dir_node->pinned_dentry = dget(p_path.dentry);
                     nomount_hijack_dir_ops(dir_node, v_inode);
                     nomount_hijack_superblock(p_path.dentry->d_sb);
                 }
