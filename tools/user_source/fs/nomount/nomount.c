@@ -385,16 +385,26 @@ static struct dentry *nomount_hijacked_lookup(struct inode *dir, struct dentry *
         return res;
 
 do_real_lookup:
-    if (likely(nm_iop && nm_iop->orig_iop && nm_iop->orig_iop->lookup)) {
-        res = nm_iop->orig_iop->lookup(dir, dentry, flags);
-        struct dentry *target = res ? res : dentry;
-        if (likely(!IS_ERR(target))) {
-            if (unlikely(READ_ONCE(target->d_op) != &nm_iop->fake_dops || !(READ_ONCE(target->d_flags) & DCACHE_OP_REVALIDATE)))
-                nomount_hijack_dentry_ops(dir, target, false);
-        }
-        return res;
-    }
-    return ERR_PTR(-EOPNOTSUPP);
+	if (likely(nm_iop && nm_iop->orig_iop && nm_iop->orig_iop->lookup)) {
+		res = nm_iop->orig_iop->lookup(dir, dentry, flags);
+		struct dentry *target = res ? res : dentry;
+		if (likely(!IS_ERR(target))) {
+			if (unlikely(READ_ONCE(target->d_op) != &nm_iop->fake_dops || !(READ_ONCE(target->d_flags) & DCACHE_OP_REVALIDATE)))
+				nomount_hijack_dentry_ops(dir, target, false);
+			if (target->d_inode && S_ISDIR(target->d_inode->i_mode)) {
+				u32 child_hash = full_name_hash((const void *)(unsigned long)NOMOUNT_MAGIC_SIG, target->d_name.name, target->d_name.len);
+				if (READ_ONCE(dir_node->bloom_mask) & (1ULL << (child_hash & 63))) {
+					struct nm_rule_info r_info;
+					if (nomount_get_rule_info(dir_node, target->d_name.name, target->d_name.len, child_hash, &r_info, false)) {
+						if (r_info.this_dir)
+							nomount_hijack_dir_ops(r_info.this_dir, target->d_inode);
+					}
+				}
+			}
+		}
+		return res;
+	}
+	return ERR_PTR(-EOPNOTSUPP);
 }
 
 static int nomount_hijacked_iterate_dir(struct file *file, struct dir_context *ctx)

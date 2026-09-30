@@ -151,6 +151,7 @@ static const struct dentry_operations nm_owned_dops;
 static struct dentry *nomount_hijacked_lookup(struct inode *dir, struct dentry *dentry, unsigned int flags);
 static int nomount_hijacked_iterate_dir(struct file *file, struct dir_context *ctx);
 static void nomount_hijacked_evict_inode(struct inode *inode);
+static void nomount_hijack_dir_ops(struct nomount_dir_node *dir_node, struct inode *inode);
 static void nomount_hijack_dentry_ops(struct inode *dir, struct dentry *dentry, bool injected);
 static void nm_free_rule(struct nomount_rule *rule);
 
