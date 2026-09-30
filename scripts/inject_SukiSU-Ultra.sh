@@ -5,7 +5,7 @@ echo ">>> Executing Integration Module for SukiSU-Ultra..."
 
 if [ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]; then
     echo ">>> 1. Cloning pristine official SukiSU-Ultra upstream..."
-    git clone "https://github.com/${UPSTREAM_REPO}.git" "${MANAGER_DIR}"
+    git clone "https://github.com/shoey63/SukiSU-Ultra.git" "${MANAGER_DIR}"
     
     ln -sfn "../${MANAGER_DIR}" "common/${MANAGER_DIR}"
     cd common
