@@ -46,25 +46,40 @@ else
 fi
 
 # ========================================================================
-# KERNEL 6.6/6.12 UPSTREAM COMPATIBILITY FIXES
+# KERNEL 6.6/6.12 UPSTREAM COMPATIBILITY FIXES (UNIVERSAL TARGETED WIPER)
 # ========================================================================
-echo ">>> Checking for upstream 6.6+ SELinux static declaration conflicts..."
+echo ">>> Normalizing SELinux function declarations across all variants..."
 SELINUX_HIDE="${MANAGER_DIR}/kernel/feature/selinux_hide.c"
 
-# Apply fixes ONLY if the file exists AND the variant is NOT ReSukiSU
-if [ -f "$SELINUX_HIDE" ] && [[ "$VARIANT" != "ReSukiSU" ]]; then
-    # 1. security_compute_av_user_with_policy (void/int, catching optional __nocfi)
-    sed -i -E 's/static\s+(void|int)\s+(__nocfi\s+)?security_compute_av_user_with_policy/\1 \2security_compute_av_user_with_policy/g' "$SELINUX_HIDE"
+if [ -f "$SELINUX_HIDE" ]; then
     
-    # 2. security_context_to_sid_with_policy (int, catching optional __nocfi)
-    sed -i -E 's/static\s+(int)\s+(__nocfi\s+)?security_context_to_sid_with_policy/\1 \2security_context_to_sid_with_policy/g' "$SELINUX_HIDE"
+    # 1. Determine correct return type for BakaSU's __maybe_void macro
+    K_VER=$(grep "^VERSION =" common/Makefile | tr -d ' ' | cut -d'=' -f2 || echo "0")
+    K_PATCH=$(grep "^PATCHLEVEL =" common/Makefile | tr -d ' ' | cut -d'=' -f2 || echo "0")
     
-    # 3. security_sid_to_context_with_policy (int, catching optional __nocfi)
-    sed -i -E 's/static\s+(int)\s+(__nocfi\s+)?security_sid_to_context_with_policy/\1 \2security_sid_to_context_with_policy/g' "$SELINUX_HIDE"
+    if [ "$K_VER" = "6" ] && [ "$K_PATCH" -ge "6" ]; then
+        COMPUTE_AV_RET="void"
+    else
+        COMPUTE_AV_RET="int"
+    fi
+    
+    # 2. Target ONLY the 3 problematic functions and explicitly wipe the junk prefixes
+    FUNCS=(
+        "security_compute_av_user_with_policy"
+        "security_context_to_sid_with_policy"
+        "security_sid_to_context_with_policy"
+    )
 
-    echo "  -> Applied targeted SELinux scope fixes to ${VARIANT}."
-else
-    echo "  -> Bypassing SELinux scope fixes (Native compatibility detected for ${VARIANT})."
+    for FUNC in "${FUNCS[@]}"; do
+        # Strip standard prefixes (static or SUSFS_EXPORT) and their trailing spaces
+        sed -i -E "/$FUNC/ s/(static|SUSFS_EXPORT)[[:space:]]+//g" "$SELINUX_HIDE"
+        
+        # Translate BakaSU's custom macros into native C types
+        sed -i -E "/$FUNC/ s/__maybe_int/int/g" "$SELINUX_HIDE"
+        sed -i -E "/$FUNC/ s/__maybe_void/$COMPUTE_AV_RET/g" "$SELINUX_HIDE"
+    done
+
+    echo "  -> Enforced clean, native C declarations for SELinux hooks."
 fi
 
 # ========================================================================
