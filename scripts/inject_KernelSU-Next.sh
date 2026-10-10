@@ -41,6 +41,49 @@ if [ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]; then
     fi
     
     git commit -m "Merge susfs features from pershoot"
+
+    # SuSFS on 5.10 references the legacy SELinux state provided by KernelSU.
+    # Keep the latest upstream; restore both the symbol and its runtime policy.
+    if [ "${BASE_VER:-}" = "5.10" ]; then
+        SELINUX_HIDE_FILE="kernel/feature/selinux_hide.c"
+        if ! grep -qE '^[[:space:]]*struct[[:space:]]+selinux_state[[:space:]]+fake_state[[:space:]]*=' "$SELINUX_HIDE_FILE"; then
+            echo ">>> [FIX] Restoring legacy SELinux fake_state for KernelSU-Next on 5.10..."
+            patch --batch --forward --fuzz=0 -p1 <<'PATCH'
+--- a/kernel/feature/selinux_hide.c
++++ b/kernel/feature/selinux_hide.c
+@@ -36,6 +36,10 @@
+ bool ksu_selinux_hide_enabled __read_mostly = false;
+ bool ksu_selinux_hide_running __read_mostly = false;
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
++struct selinux_state fake_state = {0};
++#endif
++
+ #ifdef CONFIG_KSU_SUSFS
+ #define SUSFS_EXPORT
+ #else
+@@ -445,6 +449,11 @@
+         return -EAGAIN;
+     }
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
++    fake_state.initialized = true;
++    fake_state.policy = backup_sepolicy;
++#endif
++
+     security_dump_masked_av_fn = find_kernel_symbol_exact("security_dump_masked_av");
+     if (!security_dump_masked_av_fn) {
+         pr_warn("security_dump_masked_av not found!\n");
+PATCH
+        fi
+
+        # Stop early if upstream changes leave the legacy state incomplete.
+        if ! grep -qE 'fake_state\.initialized[[:space:]]*=[[:space:]]*true' "$SELINUX_HIDE_FILE" ||
+           ! grep -qE 'fake_state\.policy[[:space:]]*=[[:space:]]*backup_sepolicy' "$SELINUX_HIDE_FILE"; then
+            echo "[-] KernelSU-Next 5.10 fake_state initialization is missing." >&2
+            exit 1
+        fi
+    fi
     
     # Lock in variables for the Kbuild Gatekeeper
     UPSTREAM_BRANCH="${TARGET_BRANCH}"
