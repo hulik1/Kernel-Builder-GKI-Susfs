@@ -16,8 +16,6 @@ if [ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]; then
     echo ">>> Executing native setup.sh to initialize branch..."
     cd common
     bash "${MANAGER_DIR}/kernel/setup.sh" "${TARGET_BRANCH}"
-    git -C "${MANAGER_DIR}" fetch origin dev
-    git -C "${MANAGER_DIR}" checkout -B dev v3.4.1
     cd ..
     
     cd "${MANAGER_DIR}"
