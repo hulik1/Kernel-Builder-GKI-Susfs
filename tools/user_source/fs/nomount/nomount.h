@@ -43,9 +43,8 @@ static DEFINE_MUTEX(nomount_mutex);
 static LIST_HEAD(nomount_sb_list);
 
 /* * Helpers to dynamically calculate the memory address of the strings / structs */
-#define nm_get_vpath(leaf) ((leaf)->paths)
-#define nm_get_rpath(rule) ((rule)->paths)
-#define nm_get_child_name(leaf) (nm_get_vpath(leaf) + (leaf)->v_len - (leaf)->child_len)
+#define nm_get_child_name(leaf) ((leaf)->paths + (leaf)->v_len - (leaf)->child_len)
+#define nm_rule_heap(arr) ((char *)(arr)->rules + (arr)->count * sizeof(struct nm_rule))
 
 struct nm_dir_ops {
     struct inode_operations fake_iop;
@@ -71,8 +70,8 @@ struct nm_sop {
 };
 
 struct nm_inode_info {
+    struct path r_path;
     struct nomount_dir_node *dir_node;
-    struct nomount_rule *rule;
     struct rcu_head rcu;
 };
 
@@ -97,20 +96,17 @@ struct nomount_dir_node {
     struct nomount_leaf *owner;
 };
 
-struct nomount_rule {
+struct nm_rule {
     struct path r_path;
-    atomic_t refs;
     unsigned int target_uid;
     u16 r_len;
     u16 flags;
-    struct nomount_rule *next;
-    char paths[];
 };
 
 struct nm_rule_array {
-    struct rcu_head rcu;
+    struct nm_rule_array *next;
     int count;
-    struct nomount_rule *rules[];
+    struct nm_rule rules[];
 };
 
 struct nomount_leaf {
@@ -128,20 +124,21 @@ struct nomount_leaf {
 };
 
 struct nm_updates {
-    struct nomount_rule *rules;
+    struct nm_rule_array *arrays;
     struct nomount_leaf *leaves;
 };
 
 struct nm_rule_info {
     u16 flags;
     unsigned long v_ino;
-    struct nomount_rule *rule;
+    struct path r_path;
     struct nomount_dir_node *this_dir;
 };
 
 struct nm_uid_array {
     struct rcu_head rcu;
     int count;
+    u64 bloom_mask[4];
     uid_t uids[];
 };
 
@@ -167,8 +164,7 @@ static inline int nm_bloom_words_for(int count)
 
 static __always_inline u32 nm_qhash(const char *name, size_t len)
 {
-    u32 h = (u32)len * 33u;
-    h = (h << 5) + (u8)name[0];
+    u32 h = (u8)name[0] ^ (u32)len;
     h = (h << 5) + (u8)name[len - 1];
     h = (h << 5) + (u8)name[len >> 1];
     return h;
@@ -190,7 +186,6 @@ static struct dentry *nomount_hijacked_lookup(struct inode *dir, struct dentry *
 static int nomount_hijacked_iterate_dir(struct file *file, struct dir_context *ctx);
 static void nomount_hijacked_evict_inode(struct inode *inode);
 static void nomount_hijack_dentry_ops(struct inode *dir, struct dentry *dentry, bool injected);
-static void nm_free_rule(struct nomount_rule *rule);
 static void nm_dir_put(struct nomount_dir_node *dir_node);
 
 /* =====================================================================
@@ -222,18 +217,39 @@ static inline int nm_unpack_pos(loff_t pos) {
 }
 
 /* --- UIDs Array RCU Management --- */
+static __always_inline u32 nm_uid_hash(uid_t uid) { return (u32)uid * 2654435761u; }
+static __always_inline void nm_uid_bloom_set(struct nm_uid_array *arr, uid_t uid)
+{
+    u32 h = nm_uid_hash(uid);
+    arr->bloom_mask[(h >> 6) & 3] |= 1ULL << (h & 63);
+}
+static __always_inline bool nm_uid_bloom_test(struct nm_uid_array *arr, uid_t uid)
+{
+    u32 h = nm_uid_hash(uid);
+    return !!(arr->bloom_mask[(h >> 6) & 3] & (1ULL << (h & 63)));
+}
+
 static inline int nm_uid_add(uid_t target)
 {
     struct nm_uid_array *old, *new_arr;
     int count = 0;
+
     if ((old = rcu_dereference_protected(nomount_uids, lockdep_is_held(&nomount_mutex)))) {
         for (int i = 0; i < (count = old->count); i++) if (old->uids[i] == target) return -EEXIST;
     }
 
-    if (!(new_arr = kmalloc(sizeof(*new_arr) + (count + 1) * sizeof(uid_t), GFP_KERNEL))) return -ENOMEM;
+    if (!(new_arr = kmalloc(sizeof(*new_arr) + (count + 1) * sizeof(uid_t), GFP_KERNEL)))
+        return -ENOMEM;
+
     new_arr->count = count + 1;
-    if (old) memcpy(new_arr->uids, old->uids, count * sizeof(uid_t));
+    if (old) {
+        memcpy(new_arr->uids, old->uids, count * sizeof(uid_t));
+        memcpy(new_arr->bloom_mask, old->bloom_mask, sizeof(new_arr->bloom_mask));
+    } else {
+        memset(new_arr->bloom_mask, 0, sizeof(new_arr->bloom_mask));
+    }
     new_arr->uids[count] = target;
+    nm_uid_bloom_set(new_arr, target);
     rcu_assign_pointer(nomount_uids, new_arr);
     if (old) kfree_rcu(old, rcu);
     return 0;
@@ -253,7 +269,11 @@ static inline int nm_uid_del(uid_t target)
         new_arr->count = count - 1;
         if (target_idx > 0) memcpy(new_arr->uids, old->uids, target_idx * sizeof(uid_t));
         if (target_idx < count - 1) memcpy(new_arr->uids + target_idx, old->uids + target_idx + 1, (count - target_idx - 1) * sizeof(uid_t));
+        memset(new_arr->bloom_mask, 0, sizeof(new_arr->bloom_mask));
+        for (int i = 0; i < new_arr->count; i++)
+            nm_uid_bloom_set(new_arr, new_arr->uids[i]);
     }
+
     rcu_assign_pointer(nomount_uids, new_arr);
     kfree_rcu(old, rcu);
     return 0;
