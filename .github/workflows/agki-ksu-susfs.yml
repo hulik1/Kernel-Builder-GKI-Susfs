@@ -1,0 +1,581 @@
+name: Universal GKI Kernel Builder CI
+run-name: "Build Custom GKI: ${{ inputs.build_name }} [${{ github.ref_name }}]"
+on:
+  workflow_dispatch:
+    inputs:
+      build_channel:
+        description: 'Build Channel'
+        required: false
+        type: choice
+        options:
+          - stable
+          - dynamic 
+          - main
+          
+      build_name:
+        description: "Build Name"
+        required: true
+        type: string
+
+      target_version:
+        description: "Kernel Version"
+        required: true
+        type: string
+
+      root_manager:
+        description: "Root Environment"
+        required: false
+        type: choice
+        options:
+          - KernelSU-Next
+          - SukiSU-Ultra
+          - BakaSU
+          - ReSukiSU
+          - KernelSU
+          - Stock
+
+      enable_ksu_susfs:
+        description: "Integrate Root Manager and SUSFS? (Select main channel for kernel root without susfs)"
+        required: false
+        type: boolean
+        default: true      
+        
+      enable_net_opts:
+        description: "Inject Network Optimizations (BBR, CAKE, FastOpen, ECN)"
+        required: false
+        type: boolean
+        default: false
+
+      enable_nomount:
+        description: "Inject nomount VFS module"
+        required: false
+        type: boolean
+        default: false
+        
+      ota_url:
+        description: "Full OTA ZIP URL (blank produces AK3 zip)"
+        required: false
+        type: string
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  MANIFEST_URL: https://android.googlesource.com/kernel/manifest
+  OTA_URL: ${{ inputs.ota_url }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Evaluate OTA URL for payload.bin compatibility
+        run: |
+          sudo apt-get install -qq -y python3-venv > /dev/null
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -q requests remotezip
+          echo "========================================"
+          echo "        OTA VALIDATION RESULT           "
+          echo "========================================"
+          python3 scripts/validate_ota.py
+          echo "========================================"
+
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          preinstalled-runtimes: true
+          android: false
+          dotnet: true
+          haskell: false
+          large-packages: false
+          docker-images: false
+          swap-storage: false
+
+      - name: Create Manual 16GB Swap File
+        run: |
+          echo "=== Freeing up any existing partial swap ==="
+          sudo swapoff -a
+          if [ -f /swapfile ]; then sudo rm -f /swapfile; fi
+
+          echo "=== Allocating 16GB Swap ==="
+          sudo fallocate -l 16G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+
+          echo "=== Verified Memory Configuration ==="
+          free -h
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Resolve Manifest Branch from Database
+        id: resolve_manifest
+        run: |
+          TARGET_RAW="${{ inputs.target_version }}"
+          echo ">>> Raw input received: $TARGET_RAW"
+
+          # Regex to extract only the first instance of an X.Y.Z version format
+          TARGET=$(echo "$TARGET_RAW" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n 1)
+
+          if [ -z "$TARGET" ]; then
+              echo "[-] Error: Could not extract a valid kernel version (e.g., 6.1.145) from the input."
+              exit 1
+          fi
+
+          echo ">>> Clean Target Version extracted: $TARGET"
+
+          # Extract the base version (e.g., turns 6.1.145 into 6.1)
+          BASE_VER=$(echo "$TARGET" | cut -d. -f1,2)
+          DB_FILE="tools/master_kernel_db.json"
+          MANIFEST_BRANCH=""
+             
+          # Export to global runner environment immediately
+          echo "BASE_VER=$BASE_VER" >> $GITHUB_ENV
+          
+          # --- QUERY UNIFIED JSON DATABASE ---
+          if [ -f "$DB_FILE" ]; then
+              echo ">>> Querying $DB_FILE for branch match..."
+
+              # Extract the exact matching dictionary block for the kernel version
+              JSON_RESULT=$(jq -r ".[\"$BASE_VER\"][] | select(.kernel == \"$TARGET\")" "$DB_FILE" 2>/dev/null || true)
+
+              if [ -n "$JSON_RESULT" ]; then
+                  A_VER=$(echo "$JSON_RESULT" | jq -r '.android_version')
+                  K_DATE=$(echo "$JSON_RESULT" | jq -r '.date')
+                  MANIFEST_BRANCH="common-${A_VER}-${BASE_VER}-${K_DATE}"
+
+                  echo ">>> Precise match found in DB!"
+              fi
+          else
+              echo "[-] Warning: Database file $DB_FILE not found in the repository."
+          fi
+
+          # --- LTS FALLBACK & CRASH LOGIC ---
+          if [ -z "$MANIFEST_BRANCH" ]; then
+              echo "[-] Exact version not mapped. Bypassing database and defaulting to standard LTS branch..."
+
+              # Map standard GKI kernel bases to their logical LTS branches
+              case "$BASE_VER" in
+                  "5.10") ANDROID_VER="android12" ;;
+                  "5.15") ANDROID_VER="android13" ;;
+                  "6.1")  ANDROID_VER="android14" ;;
+                  "6.6")  ANDROID_VER="android15" ;;
+                  "6.12") ANDROID_VER="android16" ;;
+                  "6.18") ANDROID_VER="android17" ;;
+                  *)
+                      # Total nonsense kills the build
+                      echo "[-] Error: Unsupported base version $BASE_VER. Cannot resolve a valid LTS branch."
+                      exit 1
+                      ;;
+              esac
+
+              MANIFEST_BRANCH="common-${ANDROID_VER}-${BASE_VER}-lts"
+          fi
+
+          echo ">>> Target Branch successfully resolved: $MANIFEST_BRANCH"
+
+          # Export to environment for subsequent sync steps
+          echo "MANIFEST_BRANCH=${MANIFEST_BRANCH}" >> $GITHUB_ENV
+          echo "ROOT_MANAGER=${{ inputs.root_manager }}" >> $GITHUB_ENV
+          echo "MANIFEST_URL=https://android.googlesource.com/kernel/manifest" >> $GITHUB_ENV
+
+      - name: Configure Build Channels
+        if: inputs.root_manager != 'Stock' && inputs.enable_ksu_susfs == true
+        run: |
+          echo "=== Configuring Build Channel: ${{ inputs.build_channel }} ==="
+
+          # 1. Define global upstream quirks based on the selected variant
+          case "${{ inputs.root_manager }}" in
+            "KernelSU-Next")
+              echo "UPSTREAM_REPO=KernelSU-Next/KernelSU-Next" >> $GITHUB_ENV
+              echo "TARGET_BRANCH=dev" >> $GITHUB_ENV
+              echo "WORKFLOW_FILE=build-manager-ci.yml" >> $GITHUB_ENV
+              ;;
+            "SukiSU-Ultra")
+              echo "UPSTREAM_REPO=SukiSU-Ultra/SukiSU-Ultra" >> $GITHUB_ENV
+              echo "TARGET_BRANCH=main" >> $GITHUB_ENV
+              echo "WORKFLOW_FILE=build-manager.yml" >> $GITHUB_ENV
+              ;;
+            "BakaSU")
+              echo "UPSTREAM_REPO=Baka-SU/BakaSU" >> $GITHUB_ENV
+              echo "TARGET_BRANCH=main" >> $GITHUB_ENV
+              echo "WORKFLOW_FILE=build-manager.yml" >> $GITHUB_ENV
+              ;;
+            "ReSukiSU")
+              echo "UPSTREAM_REPO=ReSukiSU/ReSukiSU" >> $GITHUB_ENV
+              echo "TARGET_BRANCH=main" >> $GITHUB_ENV
+              echo "WORKFLOW_FILE=build-manager.yml" >> $GITHUB_ENV
+              ;;
+            "KernelSU"|*)
+              echo "UPSTREAM_REPO=tiann/KernelSU" >> $GITHUB_ENV
+              echo "TARGET_BRANCH=main" >> $GITHUB_ENV
+              echo "WORKFLOW_FILE=build-manager.yml" >> $GITHUB_ENV
+              ;;
+          esac
+
+          # 2. Route the variant to the appropriate build engine
+          if [ "${{ inputs.build_channel }}" == "dynamic" ]; then
+            echo ">>> Routing ${{ inputs.root_manager }} to Automated Dynamic Transplant..."
+            echo "USE_DYNAMIC_TRANSPLANT=true" >> $GITHUB_ENV
+            echo "KSU_VARIANT_REPO_URL=https://github.com/shoey63/${{ inputs.root_manager }}.git" >> $GITHUB_ENV
+            echo "KSU_VARIANT_REF=stable" >> $GITHUB_ENV
+            echo "SUSFS_REPO_URL=https://gitlab.com/simonpunk/susfs4ksu.git" >> $GITHUB_ENV
+          else
+            echo ">>> Routing ${{ inputs.root_manager }} to Safe Fallback Fork (Stable branch)..."
+            echo "USE_DYNAMIC_TRANSPLANT=false" >> $GITHUB_ENV
+            echo "SUSFS_REPO_URL=https://gitlab.com/shoey63/susfs4ksu.git" >> $GITHUB_ENV
+            echo "KSU_VARIANT_REPO_URL=https://github.com/shoey63/${{ inputs.root_manager }}.git" >> $GITHUB_ENV
+            echo "KSU_VARIANT_REF=${{ inputs.build_channel }}" >> $GITHUB_ENV
+          fi
+        shell: bash
+
+      - name: Setup repo tool
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL https://storage.googleapis.com/git-repo-downloads/repo -o "$HOME/bin/repo"
+          chmod +x "$HOME/bin/repo"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Sync kernel source
+        run: |
+          set -euo pipefail
+          rm -rf kernel_workspace && mkdir -p kernel_workspace && cd kernel_workspace
+          repo init -u "$MANIFEST_URL" -b "$MANIFEST_BRANCH" --depth=1
+          
+          MAX_RETRIES=3
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo ">>> Running repo sync (Attempt $i of $MAX_RETRIES)..."
+            
+            if repo sync -c --no-tags --no-clone-bundle --current-branch -j$(nproc); then
+              echo ">>> Repo sync successful!"
+              break
+            else
+              if [ $i -eq $MAX_RETRIES ]; then
+                echo ">>> Repo sync completely failed after $MAX_RETRIES attempts. Aborting."
+                exit 1
+              fi
+              echo ">>> Sync connection dropped. Waiting 15 seconds before retrying..."
+              sleep 15
+            fi
+          done
+
+          # Capture the PURE Google hash AND the official Unix timestamp
+          cd common
+          echo "OFFICIAL_HASH=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "OFFICIAL_DATE=$(git log -1 --format=%ct)" >> $GITHUB_ENV
+          echo ">>> Captured Hash: $(git rev-parse --short HEAD)"
+          echo ">>> Captured Date: $(git log -1 --format=%ct)"
+
+      - name: Calculate Dynamic SuSFS Branch
+        if: inputs.root_manager != 'Stock' && inputs.enable_ksu_susfs == true
+        run: |
+          MANIFEST="${{ env.MANIFEST_BRANCH }}"
+
+          if [[ -n "$MANIFEST" ]]; then
+              echo ">>> Calculating SuSFS branch from manifest branch: $MANIFEST..."
+              SUSFS_BRANCH=$(echo "$MANIFEST" | sed -E 's/common-(android[0-9]+-[0-9]+\.[0-9]+).*/gki-\1-dev/')
+              echo ">>> Target SuSFS Branch mapped to: $SUSFS_BRANCH"
+              echo "SUSFS_NEXT_REF=${SUSFS_BRANCH}" >> $GITHUB_ENV
+
+              # Export to GITHUB_ENV
+              echo "SUSFS_BRANCH=${SUSFS_BRANCH}" >> $GITHUB_ENV
+              echo ">>> Target SuSFS Branch set to: ${SUSFS_BRANCH}"
+          else
+              echo "[-] Warning: MANIFEST_BRANCH not found. Falling back to default."
+              echo "SUSFS_BRANCH=gki-android14-6.1-dev" >> $GITHUB_ENV
+          fi
+
+      - name: Integrate Root Manager (${{ inputs.root_manager }})
+        if: inputs.root_manager != 'Stock' && inputs.enable_ksu_susfs == true
+        env:
+          KSU_VARIANT_REPO_URL: ${{ env.KSU_VARIANT_REPO_URL }}
+          KSU_VARIANT_REF: ${{ env.KSU_VARIANT_REF }}
+          USE_DYNAMIC_TRANSPLANT: ${{ env.USE_DYNAMIC_TRANSPLANT }}
+          BUILD_CHANNEL: ${{ inputs.build_channel }}
+          INTEGRATE_SUSFS: ${{ inputs.enable_ksu_susfs }}
+          SUSFS_BRANCH: ${{ env.SUSFS_BRANCH }}
+        run: |
+          bash ./scripts/inject_ksu_variant.sh "${{ inputs.root_manager }}"
+
+      - name: Integrate SUSFS common-side
+        if: inputs.root_manager != 'Stock' && inputs.enable_ksu_susfs == true && inputs.build_channel != 'main'
+        env:
+          SUSFS_NEXT_URL: ${{ env.SUSFS_REPO_URL }}
+          SUSFS_NEXT_REF: ${{ env.SUSFS_BRANCH }}
+        run: |
+          bash ./scripts/integrate_susfs.sh
+
+      - name: Fix SUSFS Patch Rejections
+        if: inputs.root_manager != 'Stock' && inputs.enable_ksu_susfs == true && inputs.build_channel != 'main'
+        run: |
+          bash ./scripts/fix_susfs_rejections.sh
+
+      - name: Configure Kconfigs and Fragments
+        env:
+          ENABLE_NOMOUNT: ${{ inputs.enable_nomount }}
+          ENABLE_NET_OPTS: ${{ inputs.enable_net_opts }}
+        run: |
+          chmod +x scripts/configure_kconfigs.sh
+          ./scripts/configure_kconfigs.sh
+
+      - name: Inject User Source Files
+        if: inputs.enable_nomount == true || inputs.enable_net_opts == true
+        env:
+          ENABLE_NOMOUNT: ${{ inputs.enable_nomount }}
+        run: |
+          if [ "$ENABLE_NOMOUNT" = "true" ]; then
+            echo ">>> Fetching latest nomount source from master branch..."
+            NOMOUNT_DIR="$(pwd)/tools/user_source/fs/nomount"
+            
+            # Fetch directly from the master branch
+            curl -sSL "https://raw.githubusercontent.com/maxsteeel/nomount/dev/kernel/src/nomount.c" -o "$NOMOUNT_DIR/nomount.c"
+            curl -sSL "https://raw.githubusercontent.com/maxsteeel/nomount/dev/kernel/src/nomount.h" -o "$NOMOUNT_DIR/nomount.h"
+          fi
+
+          echo ">>> Injecting user source files into common tree..."
+          shopt -s dotglob nullglob
+          
+          # Only attempt to copy if there are actually files in the directory
+          SRC_FILES=($(pwd)/tools/user_source/*)
+          if [ ${#SRC_FILES[@]} -gt 0 ]; then
+            cp -r "$(pwd)/tools/user_source/"* kernel_workspace/common/
+            echo "  -> Files injected successfully."
+          else
+            echo "  -> No files found in tools/user_source/ to inject."
+          fi
+          
+          echo ">>> Source injection phase complete."
+        shell: bash
+
+      - name: Apply User Patches
+        if: inputs.enable_net_opts == true
+        run: |
+          PATCH_DIR="$(pwd)/tools/user_patches"
+          
+          echo ">>> Target Base Version for patches: $BASE_VER"
+
+          if [ -d "$PATCH_DIR" ]; then
+            cd kernel_workspace/common
+            shopt -s nullglob
+            patches=("$PATCH_DIR"/*.patch)
+
+            if [ ${#patches[@]} -gt 0 ]; then
+              echo ">>> User patches detected. Filtering by version..."
+
+              for patch_file in "${patches[@]}"; do
+                filename=$(basename "$patch_file")
+                
+                # Condition 1: Exact BASE_VER match (e.g., 6.1-0001-fix.patch)
+                if [[ "$filename" == "${BASE_VER}-"* ]]; then
+                  echo "  -> [MATCH] Applying version-specific patch: $filename..."
+                  patch -p1 --no-backup-if-mismatch < "$patch_file" || { echo "[-] Patch failed: $filename"; exit 1; }
+                  
+                # Condition 2: Matches any other kernel version prefix (e.g., 6.6-0005.patch)
+                elif [[ "$filename" =~ ^[0-9]+\.[0-9]+- ]]; then
+                  continue # Silently skip non-matching versions
+                  
+                # Condition 3: Universal patch (e.g., 0007-security-fix.patch)
+                else
+                  echo "  -> [GENERIC] Applying generic patch: $filename..."
+                  patch -p1 --no-backup-if-mismatch < "$patch_file" || { echo "[-] Patch failed: $filename"; exit 1; }
+                fi
+              done
+              echo ">>> Patching routine complete."
+            else
+              echo ">>> No .patch files found in tools/user_patches/."
+            fi
+            cd ../..
+          fi
+        shell: bash
+
+      - name: Build common kernel Image
+        env:
+          ENABLE_NOMOUNT: ${{ inputs.enable_nomount }}
+          ENABLE_NET_OPTS: ${{ inputs.enable_net_opts }}
+          ROOT_MANAGER: ${{ inputs.root_manager }}
+        run: |
+          # Injecting the REAL Google identity into the script session
+          OFFICIAL_HASH=${{ env.OFFICIAL_HASH }} \
+          OFFICIAL_DATE=${{ env.OFFICIAL_DATE }} \
+          bash ./scripts/build_kernel.sh
+          
+      - name: Pull stock boot.img from OTA
+        if: env.REPACK_ENABLED == 'true'
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install git+https://github.com/shoey63/payload-dumper
+          mkdir -p work/stock
+          python3 ./scripts/ota_pull.py \
+            --source "$OTA_URL" \
+            --partition boot \
+            --outdir work/stock
+          echo ">>> Pulled stock boot image(s)"
+          find work/stock -maxdepth 1 -type f \( -name 'boot.img' -o -name 'boot-*.img' \) -ls
+
+      - name: Repack boot image with built Image
+        if: env.REPACK_ENABLED == 'true'
+        run: |
+          mkdir -p out/final
+          mkdir -p work/repack-tmp
+          chmod +x ./tools/magiskboot || true
+
+          BOOT_IMG="$(find work/stock -maxdepth 1 -type f \( -name 'boot.img' -o -name 'boot-*.img' \) | head -n 1)"
+          [ -n "$BOOT_IMG" ] || { echo "[-] Could not find stock boot image"; exit 1; }
+
+          STOCK_NAME="$(basename "$BOOT_IMG" .img)"
+
+          bash ./scripts/boot_swap.sh \
+            --boot "$BOOT_IMG" \
+            --image "out/Image" \
+            --magiskboot "./tools/magiskboot" \
+            --outdir "out/final" \
+            --outname "${STOCK_NAME}-repacked.img" \
+            --workdir "work/repack-tmp"
+
+      - name: Prepare Final Artifacts
+        run: |
+          mkdir -p out/final
+          echo -e "MANIFEST_URL=${MANIFEST_URL}\nMANIFEST_BRANCH=${MANIFEST_BRANCH}\nOTA_URL=${OTA_URL}\nTIMESTAMP=$(date -u '+%Y-%m-%d %H:%M:%S UTC')" > out/final/repack_metadata.txt
+
+          # Sanitize inputs.build_name: replace spaces and slashes with underscores
+          SAFE_BUILD_NAME=$(echo "${{ inputs.build_name }}" | tr ' /' '__')
+
+          AK3_REPO="https://github.com/shoey63/AnyKernel3.git"
+          AK3_BRANCH="master"
+
+          if [ "$REPACK_ENABLED" != "true" ]; then
+            echo ">>> No OTA provided. Falling back to AnyKernel3 Zip generation..."
+
+            # Prepend root manager to the standalone AK3 artifact name
+            echo "ARTIFACT_NAME=${{ inputs.root_manager }}-${{ inputs.target_version }}-AK3" >> $GITHUB_ENV
+
+            git clone --depth=1 -b "$AK3_BRANCH" "$AK3_REPO" AnyKernel3-Builder
+            rm -rf AnyKernel3-Builder/.git AnyKernel3-Builder/README.md AnyKernel3-Builder/*placeholder
+            cp -f out/Image AnyKernel3-Builder/
+            cp -r AnyKernel3-Builder/* out/final/
+
+          else
+            echo ">>> OTA Repack detected. Outputting standard boot image and AK3 zip."
+            # Use the sanitized name for the parent artifact zip
+            echo "ARTIFACT_NAME=${SAFE_BUILD_NAME}" >> $GITHUB_ENV
+
+            # Generate the specific AK3 zip for inclusion in the artifact
+            git clone --depth=1 -b "$AK3_BRANCH" "$AK3_REPO" AnyKernel3-Builder
+            rm -rf AnyKernel3-Builder/.git AnyKernel3-Builder/README.md AnyKernel3-Builder/*placeholder
+            cp -f out/Image AnyKernel3-Builder/
+
+            # Zip the AK3 payload explicitly into out/final/ with root manager prepended
+            cd AnyKernel3-Builder
+            zip -r9 "../out/final/${{ inputs.root_manager }}-${{ inputs.target_version }}-AK3.zip" *
+            cd ..
+          fi
+
+          echo ">>> Final Artifact Directory:"
+          ls -lah out/final/
+          
+      - name: Fetch Matching Manager APK
+        if: inputs.root_manager != 'Stock' && inputs.enable_ksu_susfs == true
+        id: fetch_manager
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VARIANT: ${{ inputs.root_manager }}
+          UPSTREAM_HASH: ${{ env.UPSTREAM_HASH }}
+        run: |
+          chmod +x scripts/fetch_manager.sh
+          ./scripts/fetch_manager.sh "$VARIANT" "$GH_TOKEN" "$UPSTREAM_HASH"
+
+      - name: Upload final artifact (Kernel)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: out/final/
+          if-no-files-found: error
+          
+      - name: Fetch NoMount KernelSU Module
+        if: inputs.enable_nomount == true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          REPO="maxsteeel/nomount"
+          API="https://api.github.com/repos/$REPO"
+
+          api() {
+            curl -fsSL --retry 3 \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer $GH_TOKEN" "$API/$1"
+          }
+
+          # Najdi poslední úspěšné sestavení hotového modulu.
+          PAGE=1
+          while :; do
+            RUNS=$(api "actions/workflows/build.yml/runs?per_page=100&page=$PAGE")
+            RUN_ID=$(jq -r '
+              [.workflow_runs[] | select(.conclusion == "success")]
+              | max_by(.created_at) | .id // empty
+            ' <<< "$RUNS")
+
+            if [ -n "$RUN_ID" ]; then
+              break
+            fi
+
+            if [ "$(jq '.workflow_runs | length' <<< "$RUNS")" -eq 0 ]; then
+              echo "::error::No successful NoMount build found."
+              exit 1
+            fi
+
+            PAGE=$((PAGE + 1))
+          done
+
+          # Vyber hotový NoMount modul.
+          ARTIFACTS=$(api "actions/runs/$RUN_ID/artifacts?per_page=100")
+          ARTIFACT_ID=$(jq -er '
+            [.artifacts[] |
+              select(.expired == false and (.name | startswith("NoMount-")))]
+            | max_by(.created_at) | .id // empty
+          ' <<< "$ARTIFACTS") || {
+            echo "::error::No unexpired NoMount module artifact found."
+            exit 1
+          }
+
+          echo ">>> Selected build: https://github.com/$REPO/actions/runs/$RUN_ID"
+
+          TEMP_DIR=$(mktemp -d)
+          trap 'rm -rf "$TEMP_DIR"' EXIT
+
+          # Stažení přes nightly.link.
+          curl -fSL --retry 3 \
+            "https://nightly.link/$REPO/actions/artifacts/$ARTIFACT_ID.zip" \
+            -o "$TEMP_DIR/module.zip"
+
+          mkdir -p nomount_extracted
+          unzip -qo "$TEMP_DIR/module.zip" -d nomount_extracted/
+
+          if [ ! -f nomount_extracted/module.prop ]; then
+            echo "::error::Downloaded artifact does not contain module.prop."
+            exit 1
+          fi
+
+          echo ">>> NoMount module extracted successfully:"
+          cat nomount_extracted/module.prop
+
+      - name: Upload NoMount Module
+        if: inputs.enable_nomount == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: NoMount-KSU-Module
+          path: nomount_extracted/
+          if-no-files-found: warn
+
+      - name: Upload Manager APK
+        if: inputs.root_manager != 'Stock' && inputs.enable_ksu_susfs == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.root_manager }}-Manager
+          path: manager_apk/*.apk
+          if-no-files-found: error
