@@ -503,31 +503,71 @@ jobs:
         if: inputs.enable_nomount == true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
-          echo ">>> Fetching latest stable NoMount release module..."
+          set -euo pipefail
+
+          REPO="maxsteeel/nomount"
+          API="https://api.github.com/repos/$REPO"
+
+          api() {
+            curl -fsSL --retry 3 \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer $GH_TOKEN" "$API/$1"
+          }
+
+          # Najdi poslední úspěšné sestavení hotového modulu.
+          PAGE=1
+          while :; do
+            RUNS=$(api "actions/workflows/build.yml/runs?per_page=100&page=$PAGE")
+            RUN_ID=$(jq -r '
+              [.workflow_runs[] | select(.conclusion == "success")]
+              | max_by(.created_at) | .id // empty
+            ' <<< "$RUNS")
+
+            if [ -n "$RUN_ID" ]; then
+              break
+            fi
+
+            if [ "$(jq '.workflow_runs | length' <<< "$RUNS")" -eq 0 ]; then
+              echo "::error::No successful NoMount build found."
+              exit 1
+            fi
+
+            PAGE=$((PAGE + 1))
+          done
+
+          # Vyber hotový NoMount modul.
+          ARTIFACTS=$(api "actions/runs/$RUN_ID/artifacts?per_page=100")
+          ARTIFACT_ID=$(jq -er '
+            [.artifacts[] |
+              select(.expired == false and (.name | startswith("NoMount-")))]
+            | max_by(.created_at) | .id // empty
+          ' <<< "$ARTIFACTS") || {
+            echo "::error::No unexpired NoMount module artifact found."
+            exit 1
+          }
+
+          echo ">>> Selected build: https://github.com/$REPO/actions/runs/$RUN_ID"
+
+          TEMP_DIR=$(mktemp -d)
+          trap 'rm -rf "$TEMP_DIR"' EXIT
+
+          # Stažení přes nightly.link.
+          curl -fSL --retry 3 \
+            "https://nightly.link/$REPO/actions/artifacts/$ARTIFACT_ID.zip" \
+            -o "$TEMP_DIR/module.zip"
+
           mkdir -p nomount_extracted
-          
-          # 1. Query GitHub API for the latest release
-          RELEASE_JSON=$(curl -s -H "Authorization: token $GH_TOKEN" \
-            "https://api.github.com/repos/maxsteeel/nomount/releases/latest")
-          
-          # 2. Extract the browser_download_url for the zip asset
-          DOWNLOAD_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | endswith(".zip")) | .browser_download_url' | head -n 1)
-          
-          if [ -n "$DOWNLOAD_URL" ] && [ "$DOWNLOAD_URL" != "null" ]; then
-            echo "  -> Found latest release artifact. Downloading from: $DOWNLOAD_URL"
-            curl -sL -o temp_module.zip "$DOWNLOAD_URL"
-            
-            echo "  -> Extracting module..."
-            unzip -q temp_module.zip -d nomount_extracted/
-            rm temp_module.zip
-            echo "  -> Success! Extracted contents:"
-            ls -la nomount_extracted/
-          else
-            echo "[-] Failed to find a valid zip artifact in the latest release."
+          unzip -qo "$TEMP_DIR/module.zip" -d nomount_extracted/
+
+          if [ ! -f nomount_extracted/module.prop ]; then
+            echo "::error::Downloaded artifact does not contain module.prop."
             exit 1
           fi
-        shell: bash
+
+          echo ">>> NoMount module extracted successfully:"
+          cat nomount_extracted/module.prop
 
       - name: Upload NoMount Module
         if: inputs.enable_nomount == true
