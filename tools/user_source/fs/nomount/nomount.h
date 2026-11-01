@@ -76,6 +76,9 @@ struct nm_sop {
 struct nm_inode_info {
     struct path r_path;
     struct nm_dir_node *dir_node;
+    struct dentry *saved_parent;
+    char *r_name;
+    u16 r_name_len;
     bool opaque;
     struct rcu_head rcu;
 };
@@ -104,11 +107,14 @@ struct nm_dir_node {
 
 struct nm_rule {
     struct path r_path;
+    struct dentry *r_parent;
+    const char *r_name;
     unsigned int target_uid;
     unsigned int uid_end;
     unsigned int deny_start;
     unsigned int deny_end;
     u16 r_len;
+    u16 r_name_len;
     u16 flags;
 };
 
@@ -138,6 +144,9 @@ struct nm_rule_info {
     unsigned long v_ino;
     struct path r_path;
     struct nm_dir_node *this_dir;
+    struct dentry *saved_parent;
+    char *r_name;
+    u16 r_name_len;
 };
 
 struct nm_uid_array {
@@ -193,6 +202,8 @@ static int nm_hijacked_iterate_dir(struct file *file, struct dir_context *ctx);
 static void nm_hijacked_evict_inode(struct inode *inode);
 static void nm_hijack_dentry_ops(struct inode *dir, struct dentry *dentry, bool injected);
 static void nm_dir_put(struct nm_dir_node *dir_node);
+static void nm_shutdown_release(void);
+static void nm_clear_state(int clear_flags);
 
 /* =====================================================================
  * NoMount VFS Offset Protocol
@@ -365,6 +376,11 @@ struct nm_del_hdr {
 #else
     #define FLAGS_ARG /* Nothing */
     #define FLAGS_VAL /* Nothing */
+#endif
+
+#ifndef for_each_alias
+#define for_each_alias(dentry, inode) \
+    hlist_for_each_entry(dentry, &(inode)->i_dentry, d_u.d_alias)
 #endif
 
 #ifndef DCACHE_DONTCACHE
