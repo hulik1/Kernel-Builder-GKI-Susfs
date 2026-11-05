@@ -45,12 +45,40 @@ if [ "${ROOT_MANAGER:-}" = "SukiSU-Ultra" ]; then
         sed -i 's/return my_setprocattr/return selinux_setprocattr/g' common/security/selinux/hooks.c
     fi
 
+    # Neutralize static_branch(&ksu_su_compat_enabled) type collision (struct static_key_true vs bool)
+    for f in common/fs/exec.c common/fs/open.c common/fs/stat.c; do
+        if [ -f "$f" ]; then
+            sed -i 's/extern struct static_key_true ksu_su_compat_enabled;//g' "$f"
+            sed -i 's/static_branch_likely(&ksu_su_compat_enabled)/0/g' "$f"
+        fi
+    done
+
+    # Neutralize static_branch(&ksu_is_init_rc_hook_enabled) & input hook in VFS/input
+    for f in common/fs/read_write.c common/fs/stat.c common/drivers/input/input.c; do
+        if [ -f "$f" ]; then
+            sed -i 's/static_branch_unlikely(&ksu_is_init_rc_hook_enabled)/0/g' "$f"
+            sed -i 's/static_branch_unlikely(&ksu_is_input_hook_enabled)/0/g' "$f"
+        fi
+    done
+
     # Unconditionally sever 50_ patch exec.c calls so strong SukiSU symbols don't double-fire
     if [ -f "common/fs/exec.c" ]; then
         echo ">>> [HOTFIX] Severing 50_ patch execveat hooks for SukiSU-Ultra..."
         sed -i 's/.*(void)ksu_handle_post_execveat_sucompat.*/\t\t(void)0; \/\/ ksu_handle_post_execveat_sucompat bypassed/g' common/fs/exec.c
         sed -i '1i #define KSU_NO_PREINIT 1' common/fs/exec.c
     fi
+
+    # Prevent 3-arg ksu_handle_setresuid(ruid, euid, suid) in kernel/sys.c from colliding with 2-arg pt_regs hook
+    if [ -f "common/kernel/sys.c" ]; then
+        sed -i 's/(void)ksu_handle_setresuid(ruid, euid, suid);/(void)0;/g' common/kernel/sys.c
+    fi
+fi
+
+# 1.6. Suppress -Werror,-Wunused-function in fs/susfs.c when SUS_SU / TRY_UMOUNT are disabled
+if [ -f "common/fs/susfs.c" ]; then
+    echo ">>> Marking unused cred helper functions as __maybe_unused in fs/susfs.c..."
+    sed -i 's/static struct cred \*susfs_switch_to_ksu_domain/static __maybe_unused struct cred *susfs_switch_to_ksu_domain/g' common/fs/susfs.c
+    sed -i 's/static void susfs_restore_creds/static __maybe_unused void susfs_restore_creds/g' common/fs/susfs.c
 fi
 
 # 2. Kernel 6.6+: Fix mm/rmap.c Redundant SuSFS Backport
