@@ -104,15 +104,16 @@ static struct nm_leaf *nm_find_leaf_in_dir(struct nm_dir_node *dir_node, const c
     return leaf;
 }
 
-static bool nm_path_unchanged(struct dentry *d, const struct dentry *saved_parent,
-                              const char *name, u16 namelen)
+static bool nm_path_unchanged(struct dentry *d, const struct dentry *saved_parent, const char *name, u16 namelen)
 {
     bool unchanged;
     unsigned seq;
 
     do {
         seq = raw_seqcount_begin(&d->d_seq);
-        unchanged = !d_unlinked(d) && d->d_parent == saved_parent && d->d_name.len == namelen && !memcmp(d->d_name.name, name, namelen);
+        unchanged = d->d_parent == saved_parent && d->d_name.len == namelen &&
+                    !memcmp(d->d_name.name, name, namelen) &&
+                    !(d_unhashed(d) && !IS_ROOT(d) && (!d_inode(d) || d_inode(d)->i_nlink == 0));
     } while (read_seqcount_retry(&d->d_seq, seq));
 
     return unchanged;
@@ -181,6 +182,7 @@ static inline void nm_destroy_virtual_inode(struct inode *inode)
     WRITE_ONCE(inode->i_private, NULL);
     smp_wmb();
 
+    if (info->r_file) fput(info->r_file);
     nm_dir_put(info->dir_node);
     if (info->r_path.dentry) path_put(&info->r_path);
     kfree_rcu(info, rcu);
@@ -297,7 +299,14 @@ static void nm_init_prealloc_inode(struct inode *inode, struct nm_inode_info *in
     else
         inode->i_fop = &nm_dir_fops;
 
-    if (r_inode) nm_sync_inode_times(inode, r_inode), inode->i_mapping = r_inode->i_mapping;
+    if (r_inode) {
+        if (S_ISREG(r_inode->i_mode) && r_inode->i_fop && r_inode->i_fop->read_iter) {
+            struct file *rf = dentry_open(&info->r_path, O_RDONLY | O_NONBLOCK, current_cred());
+            if (!IS_ERR(rf)) info->r_file = rf;
+        }
+        nm_sync_inode_times(inode, r_inode);
+        inode->i_mapping = r_inode->i_mapping;
+    }
     inode->i_flags |= S_PRIVATE | S_NOATIME | S_NOCMTIME | S_NOSEC;
     if (!S_ISLNK(inode->i_mode)) inode->i_opflags |= IOP_NOFOLLOW;
 }
@@ -378,6 +387,7 @@ static struct dentry *nm_materialize_rule(struct inode *dir, struct dentry *dent
     info->r_path = rule_info->r_path;
     info->dir_node = NULL;
     info->opaque = false;
+    info->r_file = NULL;
     if (!(inode = new_inode(dir->i_sb))) goto out;
     nm_init_prealloc_inode(inode, info, rule_info->v_ino);
     d_add(dentry, inode);
@@ -529,6 +539,14 @@ static int nm_open(struct inode *inode, struct file *file)
         return 0;
     }
 
+    if (likely(info->r_file != NULL && (file->f_flags & O_ACCMODE) == O_RDONLY &&
+           uid_eq(current_fsuid(), info->r_file->f_cred->fsuid) &&
+           current_cred()->security == info->r_file->f_cred->security)) {
+        real_file = get_file(info->r_file);
+        file->private_data = real_file;
+        return 0;
+    }
+
     real_file = dentry_open(&info->r_path, (file->f_flags & ~(O_CREAT | O_EXCL | O_NOCTTY)), file->f_cred);
     if (IS_ERR(real_file)) return PTR_ERR(real_file);
 
@@ -546,14 +564,21 @@ static int nm_release(struct inode *inode, struct file *file)
 static loff_t nm_llseek(struct file *file, loff_t offset, int whence)
 {
     struct file *real_file = file->private_data;
-    loff_t res;
-    if (!real_file) return -EINVAL;
+    loff_t pos;
 
-    real_file->f_pos = file->f_pos;
-    res = vfs_llseek(real_file, offset, whence);
-    file->f_pos = real_file->f_pos;
-
-    return res;
+    switch (whence) {
+    case SEEK_SET: pos = offset; break;
+    case SEEK_CUR: pos = file->f_pos + offset; break;
+    case SEEK_END: pos = i_size_read(file_inode(real_file)) + offset; break;
+    case SEEK_DATA:
+    case SEEK_HOLE:
+        if ((pos = vfs_llseek(real_file, offset, whence)) < 0) return pos;
+        break;
+    default: return -EINVAL;
+    }
+    if (pos < 0) return -EINVAL;
+    file->f_pos = pos;
+    return pos;
 }
 
 static ssize_t nm_read_iter(struct kiocb *iocb, struct iov_iter *to)
