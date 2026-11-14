@@ -64,7 +64,7 @@ on:
           (Leave blank for repo default)
         required: false
         type: string
-        default: ''
+        default: 5.10.246-android12-9-00032-gc8d19ae79d9f-ab15925918
 
       custom_uname_v:
         description: |
@@ -73,7 +73,7 @@ on:
           (Leave blank for repo default)
         required: false
         type: string
-        default: ''
+        default: #1 SMP PREEMPT Thu Jul 23 09:43:23 UTC 2026
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   MANIFEST_URL: https://android.googlesource.com/kernel/manifest
