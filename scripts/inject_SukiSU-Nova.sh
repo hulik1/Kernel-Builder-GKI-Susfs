@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# scripts/inject_SukiSU-Ultra.sh
-# Dynamic SuSFS integration module for SukiSU-Ultra
+# scripts/inject_SukiSU-Nova.sh
+# Dynamic SuSFS integration module for SukiSU-Nova
 
-echo ">>> Executing Integration Module for SukiSU-Ultra..."
+echo ">>> Executing Integration Module for SukiSU-Nova..."
 
 echo ">>> 1. Cloning target branch (${KSU_VARIANT_REF}) from ${KSU_VARIANT_REPO_URL}..."
 git clone -b "${KSU_VARIANT_REF}" "${KSU_VARIANT_REPO_URL}" "${MANAGER_DIR}"
@@ -14,6 +14,10 @@ cd ..
 
 cd "${MANAGER_DIR}"
 
+echo ">>> Configuring dummy Git identity for transplant and hotfix operations..."
+git config --global user.email "runner@github.actions"
+git config --global user.name "GitHub Actions Canary"
+
 echo ">>> 2. Fetching upstream data from ${UPSTREAM_REPO} to cross-reference..."
 git fetch --quiet "https://github.com/${UPSTREAM_REPO}.git" "${TARGET_BRANCH}"
 
@@ -23,10 +27,6 @@ if [ "${USE_DYNAMIC_TRANSPLANT}" == "true" ]; then
 
     echo ">>> 4. Fetching upstream builtin branch..."
     git fetch --quiet "https://github.com/${UPSTREAM_REPO}.git" builtin
-
-    echo ">>> Configuring dummy Git identity for transplant operations..."
-    git config --global user.email "runner@github.actions"
-    git config --global user.name "GitHub Actions Canary"
 
     echo ">>> 5. Transplanting built-in SuSFS kernel/ tree onto pristine main anchor..."
     git rm -rf --quiet kernel/
@@ -51,7 +51,7 @@ echo ">>> Applying KPM overrides..."
 sed -i '/config KPM/,/help/ s/default n/default y/' kernel/Kconfig 2>/dev/null || true
 sed -i '/select KALLSYMS/d' kernel/Kconfig 2>/dev/null || true
 
-echo ">>> Auditing and applying universal SukiSU-Ultra hotfixes..."
+echo ">>> Auditing and applying universal SukiSU-Nova hotfixes..."
 
 # Fix #2: Safety check for MLS CEXPR_L2H2 constraint typo (scontext -> tcontext in selinux_hide.c)
 if [ -f "kernel/feature/selinux_hide.c" ] && grep -A 1 "case CEXPR_L2H2:" kernel/feature/selinux_hide.c | grep -q "scontext->range.level\[0\]"; then
@@ -125,9 +125,9 @@ if [ -f "kernel/ksu_main.c" ] && ! grep -q 'ksu_avc_spoof_init();' "kernel/ksu_m
     echo "  [+] Restored AVC Spoofing ignition switches in ksu_main.c"
 fi
 
-if ! git diff --quiet; then
-    git add .
-    git commit -am "Hotfixes applied"
+git add -A
+if ! git diff --cached --quiet; then
+    git commit -m "chore: apply SukiSU-Nova hotfixes"
 fi
 
 # Calculate the official counts EXACTLY from the rock-solid hash
@@ -139,4 +139,4 @@ cd ..
 echo "  -> Target Tag: $CALCULATED_TAG"
 echo "  -> Target Hash: $UPSTREAM_HASH"
 echo "  -> Target Count: $CALCULATED_COUNT"
-echo ">>> SukiSU-Ultra integration complete."
+echo ">>> SukiSU-Nova integration complete."
