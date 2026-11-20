@@ -61,7 +61,7 @@ on:
           Custom uname -r
           <example>  6.1.162-android14-11-g9dd05ae3a1de-ab16261587
           (Leave blank for repo default)
-        required: false
+        required: true
         type: string
         default: 5.10.246-android12-9-00032-gc8d19ae79d9f-ab15925918
 
@@ -70,7 +70,7 @@ on:
           Custom uname -v
           <example>  #1 SMP PREEMPT Thu Sep  3 03:59:00 UTC 2026
           (Leave blank for repo default)
-        required: false
+        required: true
         type: string
         default: #1 SMP PREEMPT Thu Jul 23 09:43:23 UTC 2026
 env:
